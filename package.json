@@ -1,8 +1,9 @@
 {
   "name": "token-stats-timer",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "pi extension to display token usage and time spend.",
   "keywords": [
+    "pi-package",
     "pi-extension"
   ],
   "license": "ISC",
@@ -10,6 +11,7 @@
   "type": "module",
   "main": "index.ts",
   "files": [
+    "index.ts",
     "run-timer.ts",
     "token-stats.ts",
     "README.md"
@@ -17,9 +19,12 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "devDependencies": {
-    "@earendil-works/pi-tui": "^0.84.2",
-    "@earendil-works/pi-coding-agent": "^0.84.2",
-    "@earendil-works/pi-ai": "^0.84.2"
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
   }
 }

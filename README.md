@@ -38,6 +38,7 @@ Footer 下行：cwd + git 分支 + 其他扩展状态。
 ```bash
 pi remove npm:@carlosgtrz/pi-run-timer
 pi remove npm:@liziy/token-stats
+pi install npm:token-stats-timer
 ```
 
-本目录已在 `~/.pi/agent/extensions/` 下，自动发现，`/reload` 或重启 pi 生效。
+`/reload` 或重启 pi 生效。
