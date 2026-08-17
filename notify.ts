@@ -140,7 +140,7 @@ export function createNotifier(pi: ExtensionAPI): void {
     const durationMs = startMs !== undefined ? Date.now() - startMs : 0;
     if (durationMs < config.minDurationSec * 1000) return;
 
-    const dur = startMs !== undefined ? ` · ${formatDuration(durationMs)}` : "";
+    const dur = startMs !== undefined ? `${formatDuration(durationMs)}` : "-";
 
     if (runFailed) {
       if (config.onFailure) {
