@@ -92,11 +92,12 @@ export function createStepTimer(pi: ExtensionAPI): void {
     lastCtx = undefined;
   });
 
-  pi.registerEntryRenderer<FinalTimingData>(FINAL_TYPE, (entry, _opts, _theme) => {
+  pi.registerEntryRenderer<FinalTimingData>(FINAL_TYPE, (entry, _opts, theme) => {
     const d = entry.data;
     if (!d) return undefined;
-    const box = new Box(1, 1);
-    box.addChild(new Text(`总耗时 ${formatDuration(d.totalMs)}`, 0, 0));
+    const title = theme.fg("accent", "总耗时");
+    const box = new Box(1, 1, (text) => theme.bg("customMessageBg", text));
+    box.addChild(new Text(`${title} ${formatDuration(d.totalMs)}`, 0, 0));
     return box;
   });
 }
