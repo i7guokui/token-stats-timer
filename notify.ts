@@ -142,18 +142,22 @@ export function createNotifier(pi: ExtensionAPI): void {
 
     const dur = startMs !== undefined ? ` · ${formatDuration(durationMs)}` : "";
 
-    if (runFailed && config.onFailure) {
-      notify(
-        "❌ pi 执行失败",
-        `耗时：${dur}\n${truncate(runErrorMsg || "未知错误")}`,
-        config.sound,
-      );
-    } else if (runAborted && config.onAbort) {
-      notify(
-        "⏹ pi 已中止",
-        `耗时：${dur}\n${truncate(runErrorMsg || "执行被中止")}`,
-        config.sound,
-      );
+    if (runFailed) {
+      if (config.onFailure) {
+        notify(
+          "❌ pi 执行失败",
+          `耗时：${dur}\n${truncate(runErrorMsg || "未知错误")}`,
+          config.sound,
+        );
+      }
+    } else if (runAborted) {
+      if (config.onAbort) {
+        notify(
+          "⏹ pi 已中止",
+          `耗时：${dur}\n${truncate(runErrorMsg || "执行被中止")}`,
+          config.sound,
+        );
+      }
     } else if (config.onSuccess) {
       notify(
         "✅ pi 执行完成",
