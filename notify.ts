@@ -9,7 +9,7 @@
 //   enabled       总开关（默认 true）
 //   minDurationSec 时长低于该秒数的 run 不通知（默认 0 = 每次都通知）
 //   sound         通知声音（默认 "Glass"，"" 表示静音）
-//   onSuccess / onFailure / onAbort / onSessionEnd  各类通知开关
+//   onSuccess / onAbort / onSessionEnd  各类通知开关
 //
 // 命令：/notify on | off | status
 
@@ -27,7 +27,6 @@ export interface NotifyConfig {
   minDurationSec: number;
   sound: string;
   onSuccess: boolean;
-  onFailure: boolean;
   onAbort: boolean;
   onSessionEnd: boolean;
 }
@@ -37,7 +36,6 @@ const DEFAULT_CONFIG: NotifyConfig = {
   minDurationSec: 0,
   sound: "Glass",
   onSuccess: true,
-  onFailure: true,
   onAbort: false,
   onSessionEnd: false,
 };
@@ -80,9 +78,7 @@ export function createNotifier(pi: ExtensionAPI): void {
 
   // 当前 run 的状态（agent_start 重置，agent_end 收集，agent_settled 消费）
   let runStartMs: number | undefined;
-  let runFailed = false;
   let runAborted = false;
-  let runErrorMsg: string | undefined;
 
   // 进程内去抖计时
   let lastNotifyAt = 0;
@@ -102,9 +98,7 @@ export function createNotifier(pi: ExtensionAPI): void {
   }
 
   pi.on("agent_start", () => {
-    runFailed = false;
     runAborted = false;
-    runErrorMsg = undefined;
     if (runStartMs === undefined) runStartMs = Date.now();
   });
 
@@ -115,17 +109,7 @@ export function createNotifier(pi: ExtensionAPI): void {
       if (m.role === "assistant") {
         if (m.stopReason === "aborted") {
           runAborted = true;
-          runErrorMsg = runErrorMsg || "被用户中止";
-        } else if (m.stopReason === "error" || m.errorMessage) {
-          runFailed = true;
-          runErrorMsg = runErrorMsg || m.errorMessage || "模型调用出错";
         }
-      } else if (m.role === "toolResult" && m.isError) {
-        runFailed = true;
-        const toolMsg = `工具 ${m.toolName} 执行失败`;
-        runErrorMsg = runErrorMsg && !runErrorMsg.startsWith("工具 ")
-          ? runErrorMsg
-          : toolMsg;
       }
     }
   });
@@ -142,19 +126,11 @@ export function createNotifier(pi: ExtensionAPI): void {
 
     const dur = startMs !== undefined ? `${formatDuration(durationMs)}` : "-";
 
-    if (runFailed) {
-      if (config.onFailure) {
-        notify(
-          "❌ pi 执行失败",
-          `耗时：${dur}\n${truncate(runErrorMsg || "未知错误")}`,
-          config.sound,
-        );
-      }
-    } else if (runAborted) {
+    if (runAborted) {
       if (config.onAbort) {
         notify(
           "⏹ pi 已中止",
-          `耗时：${dur}\n${truncate(runErrorMsg || "执行被中止")}`,
+          `耗时：${dur}\n${truncate("执行被中止")}`,
           config.sound,
         );
       }
@@ -167,9 +143,7 @@ export function createNotifier(pi: ExtensionAPI): void {
     }
 
     // 消费本次结果，避免串扰下一次 run
-    runFailed = false;
     runAborted = false;
-    runErrorMsg = undefined;
   });
 
   // 会话关闭时提示（可选）
@@ -196,7 +170,7 @@ export function createNotifier(pi: ExtensionAPI): void {
         const sound = config.sound ? `, 声音=${config.sound}` : ", 静音";
         ctx.ui.notify(
           `完成通知: ${config.enabled ? "开" : "关"}, 最短时长=${config.minDurationSec}s, ` +
-            `成功=${config.onSuccess ? "开" : "关"}, 失败=${config.onFailure ? "开" : "关"}, ` +
+            `成功=${config.onSuccess ? "开" : "关"}, ` +
             `中止=${config.onAbort ? "开" : "关"}, 会话结束=${config.onSessionEnd ? "开" : "关"}${sound}`,
           "info",
         );

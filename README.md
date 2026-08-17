@@ -57,10 +57,13 @@ Footer 下行：cwd + git 分支 + 其他扩展状态。
 ## 任务计时（step-timer）
 
 - 任务执行中：工作指示器（spinner 文案）显示 `Working... 01:02`（整体已耗时，每秒刷新）
-- 逐条内联标注：每条 assistant 消息末尾自动追加一行 `> ⏱ 思考 00:05`——当前正在生成的消息该行实时更新，提交后永久定格；历史消息各自保留提交时的耗时、互不影响。因 pi 的 hiddenThinkingLabel 文案是全局的、无法逐条保留，故采用该内联方式（resume 回放不显示）
-- 完成后：会话末尾插入一条汇总 `总耗时 01:23`（失败时 ❌，中止时 ⏹），经 `appendEntry` 持久化、不进入 LLM 上下文，`/resume` 后仍在
+- 完成后：会话末尾插入一条汇总，仅显示总耗时：
 
-无独立开关，随包启用；计时口径与 run-timer 一致（一次 run = 首个 agent_start → agent_settled，含重试/压缩/排队提示）。早期版本的每 turn 摘要（timing-turn）已移除，历史条目自动隐藏。
+  `总耗时 01:23`
+
+  经 `appendEntry` 持久化、不进入 LLM 上下文，`/resume` 后仍在；无主题色样式。
+
+无独立开关，随包启用；计时口径与 run-timer 一致（一次 run = 首个 agent_start → agent_settled，含重试/压缩/排队提示）。早期版本的每 turn 摘要（timing-turn）、“⏱ 思考”每条消息内联标注与 Thinking 实时标签均已移除，历史条目自动隐藏。
 
 ## 命令
 
