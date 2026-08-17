@@ -21,11 +21,45 @@ Footer 上行（左对齐）：
 
 Footer 下行：cwd + git 分支 + 其他扩展状态。
 
+## macOS 完成通知
+
+每次 run（agent 任务）结束后弹系统通知，区分三种结果：
+
+- ✅ pi 执行完成 —— 正常结束（含耗时）
+- ❌ pi 执行失败 —— 模型调用出错 / 工具执行失败（含错误摘要）
+- ⏹ pi 已中止 —— 用户 Esc 中止
+
+会话关闭时另有 👋 提示（可关）。通知经 `osascript` 发送，需在系统设置 → 通知 中允许终端 App 通知。
+
+### 配置
+
+配置文件：`~/.pi/agent/extensions/token-stats/notify-config.json`（不存在时用默认值）
+
+```json
+{
+  "enabled": true,
+  "minDurationSec": 0,
+  "sound": "Glass",
+  "onSuccess": true,
+  "onFailure": true,
+  "onAbort": true,
+  "onSessionEnd": true
+}
+```
+
+- `enabled` —— 总开关（也可用 `/notify on|off` 切换）
+- `minDurationSec` —— 耗时低于该秒数的 run 不通知（设为 30 可避免秒回打扰）
+- `sound` —— 通知声音（macOS 内置：Glass/Ping/Sosumi/Hero/Funk 等，`""` 静音）
+- `onSuccess/onFailure/onAbort/onSessionEnd` —— 各类通知开关
+
+`/notify` —— 无参查看当前状态；`on`/`off` 开启/关闭。
+
 ## 命令
 
 - `/stats` —— 无参进入套餐配置（为当前 provider 选择/关闭配额套餐）
 - `/stats day [YYYY-MM-DD]` / `hour` / `week` / `month [YYYY-MM]` —— 统计查询
 - `/stats config` —— 显示样式 / 显示内容（含「计时器」开关）/ 配额刷新时间
+- `/notify [on|off]` —— macOS 完成通知开关（无参查看状态）
 
 ## 与两个原包的兼容性
 

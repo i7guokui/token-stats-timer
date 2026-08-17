@@ -20,6 +20,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { createRunTimer } from "./run-timer.ts";
 import { createTokenStats, formatUserPath, type SharedState } from "./token-stats.ts";
+import { createNotifier } from "./notify.ts";
 
 const shared: SharedState = {
   sessionActive: false,
@@ -29,6 +30,8 @@ const shared: SharedState = {
 export default function runTokenStatsExtension(pi: ExtensionAPI) {
   const stats = createTokenStats(pi, shared);
   const timer = createRunTimer(pi, shared);
+  // macOS 完成通知（成功/失败/中止），配置见 notify-config.json
+  createNotifier(pi);
 
   pi.on("session_start", (_event, ctx) => {
     shared.sessionActive = true;
