@@ -1,6 +1,6 @@
 {
   "name": "token-stats-timer",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "pi extension to display token usage and time spend.",
   "keywords": [
     "pi-package",
