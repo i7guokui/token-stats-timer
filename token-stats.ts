@@ -138,7 +138,6 @@ export type DisplayKey =
   | "quota5h"     // 5h 额度
   | "quotaWeek"   // 周额度
   | "quotaClock"  // 刷新时间（⏱）
-  | "timer";      // run 计时（⏱ run/prev/max）
 
 export interface DisplayConfig {
   items: Record<DisplayKey, boolean>;
@@ -465,7 +464,6 @@ const DEFAULT_DISPLAY_CONFIG: DisplayConfig = {
     quota5h: true,
     quotaWeek: true,
     quotaClock: true,
-    timer: true,
   },
   contextStyle: "pct-window",
   speedStyle: "t/s",
@@ -476,8 +474,6 @@ const DEFAULT_DISPLAY_CONFIG: DisplayConfig = {
 export interface TokenStatsHandle {
   /** footer 上行指标段（不含 run 计时；计时由 index.ts 拼接） */
   getMetricParts(theme: Theme, ctx: ExtensionContext): string[];
-  /** 是否显示 run 计时段 */
-  isTimerEnabled(): boolean;
 }
 
 export function createTokenStats(
@@ -1750,10 +1746,10 @@ export function createTokenStats(
         } else if (subChoice === "显示内容") {
           const itemLabels: DisplayKey[] = [
             "input", "output", "totalTokens", "cacheHit", "speed", "context",
-            "quota5h", "quotaWeek", "quotaClock", "timer",
+            "quota5h", "quotaWeek", "quotaClock",
           ];
           const itemNames: Record<DisplayKey, string> = {
-            timer: "计时器", input: "输入", output: "输出", totalTokens: "总token",
+            input: "输入", output: "输出", totalTokens: "总token",
             cacheHit: "缓存命中", speed: "速度", context: "容量",
             quota5h: "5h额度", quotaWeek: "周额度", quotaClock: "刷新时间",
           };
@@ -1843,6 +1839,5 @@ export function createTokenStats(
 
   return {
     getMetricParts,
-    isTimerEnabled: () => displayConfig.items.timer === true,
   };
 }

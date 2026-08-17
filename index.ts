@@ -18,7 +18,6 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { createRunTimer } from "./run-timer.ts";
 import { createTokenStats, formatUserPath, type SharedState } from "./token-stats.ts";
 import { createNotifier } from "./notify.ts";
 import { createStepTimer } from "./step-timer.ts";
@@ -30,7 +29,6 @@ const shared: SharedState = {
 
 export default function runTokenStatsExtension(pi: ExtensionAPI) {
   const stats = createTokenStats(pi, shared);
-  const timer = createRunTimer(pi, shared);
   // macOS 完成通知（成功/失败/中止），配置见 notify-config.json
   createNotifier(pi);
   // 每步耗时：Thinking.../Working... 实时耗时 + 每 turn/总耗时会话摘要
@@ -54,13 +52,9 @@ export default function runTokenStatsExtension(pi: ExtensionAPI) {
           // session 替换后旧 footer 可能仍被 TUI 渲染，此时 ctx 已失效，直接返回空
           if (!shared.sessionActive) return [];
 
-          // ── 上行：计时 + 指标左对齐，模型名右对齐 ──
-          // 计时器放在指标行末尾（紧邻右侧模型名）
+          // ── 上行：指标左对齐，模型名右对齐 ──
           const leftParts: string[] = [];
           leftParts.push(...stats.getMetricParts(theme, ctx));
-          if (stats.isTimerEnabled()) {
-            leftParts.push(timer.getStatusText(theme));
-          }
           const left = leftParts.join(" | ");
 
           const modelName = ctx.model?.id || "";

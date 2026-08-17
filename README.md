@@ -1,6 +1,6 @@
 # token-stats-timer
 
-`@carlosgtrz/pi-run-timer` 与 `@liziy/token-stats` 的合并插件。
+`@liziy/token-stats` 的修改版本。
 
 一个扩展、一个 footer，同时提供 run 计时与 token 用量/配额监控。
 
@@ -23,10 +23,9 @@ Footer 下行：cwd + git 分支 + 其他扩展状态。
 
 ## macOS 完成通知
 
-每次 run（agent 任务）结束后弹系统通知，区分三种结果：
+每次 run（agent 任务）结束后弹系统通知，区分两种结果：
 
 - ✅ pi 执行完成 —— 正常结束（含耗时）
-- ❌ pi 执行失败 —— 模型调用出错 / 工具执行失败（含错误摘要）
 - ⏹ pi 已中止 —— 用户 Esc 中止
 
 会话关闭时另有 👋 提示（可关）。通知经 `osascript` 发送，需在系统设置 → 通知 中允许终端 App 通知。
@@ -69,7 +68,7 @@ Footer 下行：cwd + git 分支 + 其他扩展状态。
 
 - `/stats` —— 无参进入套餐配置（为当前 provider 选择/关闭配额套餐）
 - `/stats day [YYYY-MM-DD]` / `hour` / `week` / `month [YYYY-MM]` —— 统计查询
-- `/stats config` —— 显示样式 / 显示内容（含「计时器」开关）/ 配额刷新时间
+- `/stats config` —— 显示样式 / 显示内容 / 配额刷新时间
 - `/notify [on|off]` —— macOS 完成通知开关（无参查看状态）
 
 ## 与两个原包的兼容性
@@ -81,7 +80,6 @@ Footer 下行：cwd + git 分支 + 其他扩展状态。
 ## 安装（替换两个原包）
 
 ```bash
-pi remove npm:@carlosgtrz/pi-run-timer
 pi remove npm:@liziy/token-stats
 pi install npm:token-stats-timer
 ```
