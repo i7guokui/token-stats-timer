@@ -9,7 +9,7 @@
 //   enabled       总开关（默认 true）
 //   minDurationSec 时长低于该秒数的 run 不通知（默认 0 = 每次都通知）
 //   sound         通知声音（默认 "Glass"，"" 表示静音）
-//   onSuccess / onFailure / onAbort / onSessionEnd  各类通知开关（默认全开）
+//   onSuccess / onFailure / onAbort / onSessionEnd  各类通知开关
 //
 // 命令：/notify on | off | status
 
@@ -145,25 +145,24 @@ export function createNotifier(pi: ExtensionAPI): void {
     const durationMs = startMs !== undefined ? Date.now() - startMs : 0;
     if (durationMs < config.minDurationSec * 1000) return;
 
-    const where = `「${cwdName()}」`;
     const dur = startMs !== undefined ? ` · ${formatDuration(durationMs)}` : "";
 
     if (runFailed && config.onFailure) {
       notify(
         "❌ pi 执行失败",
-        `${where}${dur}\n${truncate(runErrorMsg || "未知错误")}`,
+        `耗时：${dur}\n${truncate(runErrorMsg || "未知错误")}`,
         config.sound,
       );
     } else if (runAborted && config.onAbort) {
       notify(
         "⏹ pi 已中止",
-        `${where}${dur}\n${truncate(runErrorMsg || "执行被中止")}`,
+        `耗时：${dur}\n${truncate(runErrorMsg || "执行被中止")}`,
         config.sound,
       );
     } else if (config.onSuccess) {
       notify(
         "✅ pi 执行完成",
-        `${where}${dur}\nagent 任务已结束`,
+        `耗时：${dur}`,
         config.sound,
       );
     }
