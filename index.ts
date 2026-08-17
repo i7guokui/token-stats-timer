@@ -21,6 +21,7 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { createRunTimer } from "./run-timer.ts";
 import { createTokenStats, formatUserPath, type SharedState } from "./token-stats.ts";
 import { createNotifier } from "./notify.ts";
+import { createStepTimer } from "./step-timer.ts";
 
 const shared: SharedState = {
   sessionActive: false,
@@ -32,6 +33,8 @@ export default function runTokenStatsExtension(pi: ExtensionAPI) {
   const timer = createRunTimer(pi, shared);
   // macOS 完成通知（成功/失败/中止），配置见 notify-config.json
   createNotifier(pi);
+  // 每步耗时：Thinking.../Working... 实时耗时 + 每 turn/总耗时会话摘要
+  createStepTimer(pi);
 
   pi.on("session_start", (_event, ctx) => {
     shared.sessionActive = true;

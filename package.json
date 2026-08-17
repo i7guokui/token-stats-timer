@@ -15,6 +15,7 @@
     "run-timer.ts",
     "token-stats.ts",
     "notify.ts",
+    "step-timer.ts",
     "README.md"
   ],
   "scripts": {
