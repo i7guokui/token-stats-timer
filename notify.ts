@@ -41,8 +41,6 @@ import { join } from "node:path";
 
 const CONFIG_DIR = join(homedir(), ".pi/agent/extensions/token-stats");
 const CONFIG_FILE = join(CONFIG_DIR, "notify-config.json");
-const LOG_DIR = join(homedir(), ".pi/agent/extensions/token-stats-logs");
-const NOTIFY_LOG = join(LOG_DIR, "notify.log");
 
 /** 支持 OSC 777 终端协议的应用（按 TERM_PROGRAM 匹配） */
 const OSC777_TERMINALS = new Set([
@@ -90,19 +88,6 @@ function saveConfig(cfg: NotifyConfig): void {
 
 /** 连续两次通知的最短间隔（毫秒），防止并行 agent 结束时刷屏 */
 const DEBOUNCE_MS = 3000;
-
-function logLine(channel: string, title: string, ok: boolean, detail = ""): void {
-  try {
-    mkdirSync(LOG_DIR, { recursive: true });
-    appendFileSync(
-      NOTIFY_LOG,
-      `${new Date().toISOString()} [${channel}] ${ok ? "OK" : "FAIL"} ${JSON.stringify(title)}${detail ? ` ${detail}` : ""}\n`,
-      "utf-8",
-    );
-  } catch {
-    // 日志失败不影响通知本身
-  }
-}
 
 function formatDuration(ms: number): string {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
@@ -173,21 +158,13 @@ function notifyTerminalNotifier(title: string, message: string, sound: string): 
   }
 }
 
-/** 通道3：osascript 保底（不支持 OSC 777 的终端）；失败信息写日志供排查 */
+/** 通道3：osascript 保底（不支持 OSC 777 的终端） */
 function notifyOSAScript(title: string, message: string, sound: string): void {
   const soundPart = sound ? ` sound name ${JSON.stringify(sound)}` : "";
   const script = `display notification ${JSON.stringify(message)} with title ${JSON.stringify(title)}${soundPart}`;
   const child = spawn("osascript", ["-e", script], {
     detached: true,
     stdio: ["ignore", "ignore", "pipe"],
-  });
-  let err = "";
-  child.stderr?.on("data", (d) => {
-    err += d.toString();
-  });
-  child.on("error", (e) => logLine("osascript", title, false, e.message));
-  child.on("exit", (code) => {
-    if (code !== 0) logLine("osascript", title, false, err.trim() || `exit ${code}`);
   });
   child.unref();
 }
@@ -213,19 +190,16 @@ export function createNotifier(pi: ExtensionAPI): void {
     if (isITerm2()) {
       // iTerm2：官方文档通知序列 OSC 9（实测有效）
       notifyOSC9(title, message);
-      logLine("osc9", title, true);
       return;
     }
 
     if (supportsOSC777()) {
       // Ghostty / WezTerm / Hyper / rxvt：OSC 777
       notifyOSC777(title, message);
-      logLine("osc777", title, true);
       return;
     }
 
     if (notifyTerminalNotifier(title, message, sound)) {
-      logLine("terminal-notifier", title, true);
       return;
     }
 

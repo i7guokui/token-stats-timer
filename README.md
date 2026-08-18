@@ -40,8 +40,6 @@ Footer 下行：cwd + git 分支 + 其他扩展状态。
 
 > 为什么不用纯 osascript：macOS Sequoia 起通知按“调用进程”归属，pi 是 node 进程、无法在系统设置里授权，通知会被静默丢弃（脚本 exit 0 但没弹窗）。OSC 序列把归属改到终端 App，授权后即可正常弹。
 
-每次投递结果追加到 `~/.pi/agent/extensions/token-stats-logs/notify.log`，没弹通知时先看它判断是触发问题还是投递问题。
-
 ### 配置
 
 配置文件：`~/.pi/agent/extensions/token-stats/notify-config.json`（不存在时用默认值）
@@ -63,7 +61,7 @@ Footer 下行：cwd + git 分支 + 其他扩展状态。
 - `sound` —— 通知声音（macOS 内置：Glass/Ping/Sosumi/Hero/Funk 等，`""` 静音；注意仅 osascript/terminal-notifier 通道有声，OSC 777 无声音参数）
 - `onSuccess/onFailure/onAbort/onSessionEnd` —— 各类通知开关
 
-`/notify` —— 无参查看当前状态；`on`/`off` 开关；`test` 立即发一条测试通知验证通道是否可达（先看系统通知栏有没有，没有再看 notify.log）。
+`/notify` —— 无参查看当前状态；`on`/`off` 开关；`test` 立即发一条测试通知验证通道是否可达。
 
 ## 任务计时（step-timer）
 
@@ -83,11 +81,10 @@ Footer 下行：cwd + git 分支 + 其他扩展状态。
 - `/stats config` —— 显示样式 / 显示内容 / 配额刷新时间
 - `/notify [on|off|test]` —— 通知开关 / 测试（无参查看状态）
 
-## 与两个原包的兼容性
+## 与原包的兼容性
 
 - 显示/套餐配置沿用 `~/.pi/agent/extensions/token-stats/`（原 token-stats 的配置直接生效）
 - 统计日志沿用 `~/.pi/agent/extensions/token-stats-logs/`（历史数据 `/stats` 可直接查询）
-- run 计时状态沿用 session 内 `run-timer-state` 自定义条目（`/reload` 后自动恢复，兼容旧 `turn-timer-state`）
 
 ## 安装（替换原包）
 
