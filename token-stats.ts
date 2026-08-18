@@ -100,6 +100,17 @@ interface DailyRecord {
 
 // ── 套餐用量类型 ──────────────────────────────────────────
 
+/** GLM / 智谱团队套餐凭证：组织 ID + 项目 ID（二者齐全才走团队查询） */
+interface TeamCredential {
+  organization: string;
+  project: string;
+}
+
+/** fetchQuota 额外参数（目前仅 GLM 团队版使用） */
+interface QuotaFetchExtra {
+  team?: TeamCredential | null;
+}
+
 interface TokenPlan {
   id: string;
   name: string;
@@ -108,12 +119,14 @@ interface TokenPlan {
   baseUrl: string;
   quotaPath: string;
   authHeader: (key: string) => Record<string, string>;
-  fetchQuota: (plan: TokenPlan, key: string) => Promise<any>;
+  fetchQuota: (plan: TokenPlan, key: string, extra?: QuotaFetchExtra) => Promise<any>;
   format: (data: any) => { modelPrefix: string; display: string; color: 'ok' | 'warn' | 'err' };
 }
 
 interface TokenConfig {
   providerPlans: Record<string, string | null>;
+  /** GLM 团队套餐凭证（可选），经 /stats 菜单配置并持久化 */
+  teamCredential?: { organization: string; project: string };
   ttl: number;
 }
 
@@ -334,15 +347,27 @@ const BUILTIN_PLANS: TokenPlan[] = [
   {
     id: "glm",
     name: "GLM (智谱)",
-    matchProviders: ["zhipu-cn", "zhipu", "glm", "bigmodel"],
+    matchProviders: ["zhipu-cn", "zhipu", "glm", "bigmodel", "zai-coding-cn"],
     apiKeyEnv: "GLM_API_KEY",
     baseUrl: "https://open.bigmodel.cn",
     quotaPath: "/api/monitor/usage/quota/limit",
     authHeader: (key) => ({ Authorization: key }),
-    fetchQuota: async (plan: TokenPlan, key: string) => {
-      const r = await fetch(plan.baseUrl + plan.quotaPath, {
+    fetchQuota: async (plan: TokenPlan, key: string, extra?: QuotaFetchExtra) => {
+      const team = extra?.team;
+      const headers: Record<string, string> = {
+        ...plan.authHeader(key),
+        "Content-Type": "application/json",
+      };
+      // 团队套餐：同一 quota 端点加 ?type=2，并携带组织/项目 ID 请求头
+      // （api_key + 组织 ID + 项目 ID 三者缺一不可，仅国内站 open.bigmodel.cn 有团队版）
+      if (team) {
+        headers["Bigmodel-Organization"] = team.organization;
+        headers["Bigmodel-Project"] = team.project;
+      }
+      const url = plan.baseUrl + plan.quotaPath + (team ? "?type=2" : "");
+      const r = await fetch(url, {
         method: "GET",
-        headers: { ...plan.authHeader(key), "Content-Type": "application/json" },
+        headers,
         signal: AbortSignal.timeout(5000),
       });
       if (!r.ok) throw new Error("GLM 配额查询 HTTP " + r.status);
@@ -350,23 +375,56 @@ const BUILTIN_PLANS: TokenPlan[] = [
     },
     format: (data: any) => {
       const limits = data?.data?.limits || [];
-      const tokenLimits = limits.filter((x: any) => (x.type || "").toLowerCase() === "tokens_limit");
-      if (tokenLimits.length === 0) return { modelPrefix: "", display: "无数据", color: "err" as const };
-      let fiveHour = tokenLimits[0];
-      let weekly = tokenLimits[1];
-      if (fiveHour?.unit === 6) [fiveHour, weekly] = [weekly, fiveHour];
-      const intervalRemaining = 100 - (fiveHour?.percentage ?? 0);
-      const weeklyRemaining = 100 - (weekly?.percentage ?? 0);
+      // 个人版返回 TOKENS_LIMIT，团队版返回 CREDIT_LIMIT（大小写不敏感）必识
+      const isQuota = (t: any) => {
+        const s = String(t ?? "").toLowerCase();
+        return s === "tokens_limit" || s === "credit_limit";
+      };
+      const entries = limits.filter((x: any) => isQuota(x?.type));
+      if (entries.length === 0) return { modelPrefix: "", display: "无数据", color: "err" as const };
+
+      // 窗口分类锚定 unit（不依赖数组顺序，与 cc-switch parse_zhipu_token_tiers 一致）：
+      //   unit: 3 → 5h 滚动窗口；unit: 6 → 每周窗口（老/新套餐 number 7 / 1 均可能）
+      const byUnit = (u: number) => entries.find((x: any) => x?.unit === u);
+      let fiveHour: any = byUnit(3) ?? null;
+      let weekly: any = byUnit(6) ?? null;
+      // 兜底：unit 缺失/不识别 → 无 nextResetTime 优先归 5h，其余按重置时间升序补槽
+      if (!fiveHour || !weekly) {
+        const unclassified = entries
+          .filter((x: any) => x !== fiveHour && x !== weekly)
+          .sort((a: any, b: any) =>
+            (typeof a?.nextResetTime === "number" ? a.nextResetTime : Number.MIN_SAFE_INTEGER) -
+            (typeof b?.nextResetTime === "number" ? b.nextResetTime : Number.MIN_SAFE_INTEGER));
+        for (const e of unclassified) {
+          if (!fiveHour) fiveHour = e;
+          else if (!weekly) weekly = e;
+        }
+      }
+
+      // percentage 为已用比例 → 剩余 = 100 - 已用
+      const intervalRemaining = fiveHour ? 100 - (fiveHour.percentage ?? 0) : null;
+      const weeklyRemaining = weekly ? 100 - (weekly.percentage ?? 0) : null;
       const now = Date.now();
-      const resets = tokenLimits
-        .map((x: any) => x.nextResetTime)
+      const resets = entries
+        .map((x: any) => x?.nextResetTime)
         .filter((t: any) => typeof t === "number" && t > now);
       const nearestReset = resets.length > 0 ? Math.min(...resets) : null;
-      return {
-        modelPrefix: "",
-        display: formatTokenPlanDisplay(intervalRemaining, weeklyRemaining, nearestReset),
-        color: intervalRemaining < 20 || weeklyRemaining < 20 ? "err" as const : intervalRemaining < 50 || weeklyRemaining < 50 ? "warn" as const : "ok" as const,
-      };
+
+      const both = intervalRemaining !== null && weeklyRemaining !== null;
+      const display =
+        intervalRemaining !== null && weeklyRemaining !== null
+          ? formatTokenPlanDisplay(intervalRemaining, weeklyRemaining, nearestReset)
+          : intervalRemaining !== null
+            ? `5h: ${Math.round(intervalRemaining)}%`
+            : weeklyRemaining !== null
+              ? `W: ${Math.round(weeklyRemaining)}%`
+              : "无数据";
+      const low = (v: number | null) => v !== null && v < 20;
+      const mid = (v: number | null) => v !== null && v < 50;
+      const color = low(intervalRemaining) || low(weeklyRemaining) ? "err" as const
+        : mid(intervalRemaining) || mid(weeklyRemaining) ? "warn" as const
+          : "ok" as const;
+      return { modelPrefix: "", display, color };
     },
   },
   {
@@ -1018,6 +1076,20 @@ export function createTokenStats(
   }
 
   /**
+   * 解析套餐的团队凭证（当前仅 GLM/智谱团队版）。
+   * 组织 ID + 项目 ID 二者齐全才返回，否则返回 null（回退个人版查询）。
+   * 来源：token-stats config.json 的 teamCredential（/stats 菜单配置）。
+   */
+  function resolveTeamCredential(plan: TokenPlan): TeamCredential | null {
+    if (plan.id !== "glm") return null;
+    const tc = tokenConfig?.teamCredential;
+    const organization = tc?.organization?.trim() ?? "";
+    const project = tc?.project?.trim() ?? "";
+    if (organization && project) return { organization, project };
+    return null;
+  }
+
+  /**
    * 检测并处理 provider 变化。
    * 返回 true 表示发生了切换（供调用者决定是否要 force refresh）。
    */
@@ -1138,7 +1210,11 @@ export function createTokenStats(
 
     // 5. 调接口
     try {
-      const data = await plan.fetchQuota(plan, key);
+      const data = await plan.fetchQuota(
+        plan,
+        key,
+        { team: resolveTeamCredential(plan) },
+      );
       cache[plan.id] = { fetchedAt: Date.now(), ttl: ttlMs, data };
       await writeQuotaCache(cache);
       const fmt = plan.format(data);
@@ -1171,6 +1247,58 @@ export function createTokenStats(
   async function forceRefreshQuota(ctx: ExtensionContext) {
     await refreshQuota(ctx, true);
     shared.requestRender?.();
+  }
+
+  /** config.json 无参流里的基础结构（避免 null 展开报错） */
+  function baseTokenConfig(): TokenConfig {
+    return { ...(tokenConfig ?? { providerPlans: {}, ttl: 60 }) };
+  }
+
+  /**
+   * GLM 团队套餐交互配置：提示用户填写组织 ID / 项目 ID 并持久化到 config.json，
+   * 保存后 force 刷新使团队查询（?type=2）立即生效，并反馈查询结果。
+   */
+  async function promptGlmTeamConfig(ctx: ExtensionContext): Promise<void> {
+    const cur = tokenConfig?.teamCredential;
+    const curLabel =
+      cur?.organization && cur?.project
+        ? `${cur.organization} / ${cur.project}`
+        : "未配置（按个人版查询）";
+    const choice = await ctx.ui.select(
+      `GLM 团队套餐凭证？当前：${curLabel}\n填写组织 ID + 项目 ID（二者齐全才走团队查询 ?type=2），跳过则维持个人版查询`,
+      ["✏️ 配置/修改", "跳过"],
+    );
+    if (!choice || choice === "跳过") {
+      await forceRefreshQuota(ctx);
+      const errMsg = quotaState?.error ? formatQuotaError(quotaState) : "";
+      ctx.ui.notify(
+        quotaState?.error ? `GLM 配额查询失败：${errMsg}` : "GLM 配额已启用（个人版查询）",
+        "info",
+      );
+      return;
+    }
+
+    const organization = await ctx.ui.input("组织 ID (Organization)", cur?.organization ?? "");
+    const project = await ctx.ui.input("项目 ID (Project)", cur?.project ?? "");
+    const org = organization?.trim() ?? "";
+    const proj = project?.trim() ?? "";
+    if (!org || !proj) {
+      ctx.ui.notify("组织/项目 ID 不能为空，团队凭证未保存", "warning");
+      return;
+    }
+
+    tokenConfig = {
+      ...baseTokenConfig(),
+      teamCredential: { organization: org, project: proj },
+    };
+    await saveTokenConfig(tokenConfig);
+
+    await forceRefreshQuota(ctx);
+    const errMsg = quotaState?.error ? formatQuotaError(quotaState) : "";
+    ctx.ui.notify(
+      quotaState?.error ? `GLM 团队配额查询失败：${errMsg}` : "GLM 团队套餐配额已启用",
+      "info",
+    );
   }
 
   /** 清空所有套餐缓存（session_start 调，避免跨 session 复用旧数据） */
@@ -1668,6 +1796,11 @@ export function createTokenStats(
             } catch { /* ctx 已失效（session 被替换），忽略 */ }
             shared.requestRender?.();
           }, (tokenConfig?.ttl || 60) * 1000);
+          if (plan.id === "glm") {
+            // GLM：继续询问团队套餐凭证（个人版/团队版二选一，内部会 force 查询并反馈）
+            await promptGlmTeamConfig(ctx);
+            return;
+          }
           if (quotaState?.error) {
             // 仅当 quotaState 带有 error 字段时（key 缺失 / API 错误 / 网络错误 / 无数据）才提示"查询失败"
             const errMsg = formatQuotaError(quotaState);
@@ -1684,8 +1817,54 @@ export function createTokenStats(
           "显示样式",
           "显示内容",
           "刷新时间  (当前 " + (tokenConfig?.ttl || 60) + "s)",
+          "GLM 团队凭证",
         ]);
         if (!subChoice) return;
+
+        if (subChoice === "GLM 团队凭证") {
+          const cur = tokenConfig?.teamCredential;
+          const label =
+            cur?.organization && cur?.project
+              ? `${cur.organization} / ${cur.project}`
+              : "未配置";
+          const action = await ctx.ui.select("GLM 团队凭证（当前: " + label + "）", [
+            "✏️ 配置/修改",
+            "清除",
+            "返回",
+          ]);
+          if (!action || action === "返回") return;
+          if (action === "清除") {
+            tokenConfig = {
+              ...baseTokenConfig(),
+              teamCredential: { organization: "", project: "" },
+            };
+            await saveTokenConfig(tokenConfig);
+            await forceRefreshQuota(ctx);
+            ctx.ui.notify("GLM 团队凭证已清除（恢复个人版查询）", "info");
+          } else {
+            const organization = await ctx.ui.input("组织 ID (Organization)", cur?.organization ?? "");
+            const project = await ctx.ui.input("项目 ID (Project)", cur?.project ?? "");
+            const org = organization?.trim() ?? "";
+            const proj = project?.trim() ?? "";
+            if (!org || !proj) {
+              ctx.ui.notify("组织/项目 ID 不能为空，未保存", "warning");
+              return;
+            }
+            tokenConfig = {
+              ...baseTokenConfig(),
+              teamCredential: { organization: org, project: proj },
+            };
+            await saveTokenConfig(tokenConfig);
+            await forceRefreshQuota(ctx);
+            const errMsg = quotaState?.error ? formatQuotaError(quotaState) : "";
+            if (quotaState?.error) {
+              ctx.ui.notify(`GLM 团队配额查询失败：${errMsg}`, "info");
+            } else {
+              ctx.ui.notify("GLM 团队凭证已保存（团队查询已生效）", "info");
+            }
+          }
+          return;
+        }
 
         if (subChoice === "显示样式") {
           const catChoice = await ctx.ui.select("选择要配置的样式类别", [

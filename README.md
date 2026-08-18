@@ -76,10 +76,30 @@ Footer 下行：cwd + git 分支 + 其他扩展状态。
 
 ## 命令
 
-- `/stats` —— 无参进入套餐配置（为当前 provider 选择/关闭配额套餐）
+- `/stats` —— 无参进入套餐配置（为当前 provider 选择/关闭配额套餐；选 GLM 后会继续询问是否配置团队套餐凭证）
 - `/stats day [YYYY-MM-DD]` / `hour` / `week` / `month [YYYY-MM]` —— 统计查询
-- `/stats config` —— 显示样式 / 显示内容 / 配额刷新时间
+- `/stats config` —— 显示样式 / 显示内容 / 配额刷新时间 / GLM 团队凭证
 - `/notify [on|off|test]` —— 通知开关 / 测试（无参查看状态）
+
+## GLM 团队套餐（Team Plan）
+
+个人版与团队版共用 `GET /api/monitor/usage/quota/limit`，区别在请求头：团队版需额外携带 `Bigmodel-Organization` / `Bigmodel-Project` 两个请求头并加 `?type=2`（api_key + 组织 ID + 项目 ID 三者缺一不可，仅国内站 `open.bigmodel.cn` 有团队档）。
+
+本插件在**组织 ID 与项目 ID 都配置**时才走团队查询，否则回退个人版查询：
+
+- 启用 GLM 套餐后（`/stats` 选 GLM）会自动弹出团队凭证配置询问，可「✏️ 配置/修改」或「跳过」
+- 随时可通过 `/stats config` → 「GLM 团队凭证」修改或清除
+- 凭证保存在 `~/.pi/agent/extensions/token-stats/config.json` 的 `teamCredential` 字段：
+
+```json
+{
+  "providerPlans": { "zai-coding-cn": "glm" },
+  "teamCredential": { "organization": "your-org-id", "project": "your-project-id" },
+  "ttl": 60
+}
+```
+
+> 组织 ID / 项目 ID 在 GLM Coding Plan 团队版后台「团队编程套餐」页面获取；如果你同时使用 Claude Code / Cursor 等工具并已在环境变量里配置，也可以在 config.json 里直接填上同名值。
 
 ## 与原包的兼容性
 
