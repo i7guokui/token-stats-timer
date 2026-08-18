@@ -13,8 +13,9 @@ import type {
   ExtensionContext,
   Theme,
 } from "@earendil-works/pi-coding-agent";
+import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { Text } from "@earendil-works/pi-tui";
+import { Markdown } from "@earendil-works/pi-tui";
 import {
   appendFile,
   mkdir,
@@ -210,6 +211,41 @@ function formatTokenSpeed(tokensPerSecond: number): string {
   if (tokensPerSecond < 1000000) return `${Math.round(tokensPerSecond / 1000)}k`;
   if (tokensPerSecond < 10000000) return `${(tokensPerSecond / 1000000).toFixed(1)}M`;
   return `${Math.round(tokensPerSecond / 1000000)}M`;
+}
+
+/**
+ * 生成 GitHub 风格 markdown 表格源码（由 Markdown 组件负责渲染对齐/换行）。
+ *
+ * @param headers 表头
+ * @param rows    数据行
+ * @param opts.aligns   每列对齐方式，缺省左对齐
+ * @param opts.totalRow 底部合计行
+ */
+function renderTable(
+  headers: string[],
+  rows: string[][],
+  opts?: {
+    aligns?: Array<"left" | "right" | "center">;
+    totalRow?: string[];
+  },
+): string[] {
+  const aligns = opts?.aligns ?? [];
+  // 转义单元格内的 | 与换行，防止破坏表格结构
+  const esc = (s: string) => s.replace(/\|/g, "\\|").replace(/\n/g, " ");
+  const alignMark = (i: number) => {
+    const a = aligns[i] ?? "left";
+    return a === "right" ? "---:" : a === "center" ? ":---:" : "---";
+  };
+
+  const lines = [
+    `| ${headers.map(esc).join(" | ")} |`,
+    `| ${headers.map((_, i) => alignMark(i)).join(" | ")} |`,
+    ...rows.map((r) => `| ${r.map(esc).join(" | ")} |`),
+  ];
+  if (opts?.totalRow) {
+    lines.push(`| ${opts.totalRow.map(esc).join(" | ")} |`);
+  }
+  return lines;
 }
 
 function isReasonableTokenSpeed(tokensPerSecond: number): boolean {
@@ -1317,23 +1353,25 @@ export function createTokenStats(
     return total > 0 ? (d.sumCacheRead / total) * 100 : 0;
   }
 
-  function renderDaySummary(daily: DailyRecord): string {
+  function renderDaySummary(daily: DailyRecord): string[] {
     const d = daily;
     const avgInput = d.count > 0 ? d.sumInput / d.count : 0;
     const avgOutput = d.count > 0 ? d.sumOutput / d.count : 0;
     const totalPrompt = d.sumInput + d.sumCacheRead + d.sumCacheWrite;
     const cacheHitRate = weightedCacheHitRate(d);
 
-    const lines = [
-      `对话次数:  ${d.count}`,
-      `新增输入:  ${formatTokens(d.sumInput)}  (平均 ${formatTokens(avgInput)}/次，未命中缓存)`,
-      `缓存输入:  ${formatTokens(d.sumCacheRead)}`,
-      `总输出:    ${formatTokens(d.sumOutput)}  (平均 ${formatTokens(avgOutput)}/次)`,
-      `总token:   ${formatTokens(totalPrompt)}  (新增 + 缓存)`,
-      `缓存命中率: ${cacheHitRate.toFixed(1)}%`,
-      `平均速率:  ${(d.sumTokensPerSec / d.count).toFixed(1)} t/s`,
-    ];
-    return lines.join("\n");
+    return renderTable(
+      ["指标", "数值"],
+      [
+        ["对话次数", String(d.count)],
+        ["新增输入", `${formatTokens(d.sumInput)}（平均 ${formatTokens(avgInput)}/次，未命中缓存）`],
+        ["缓存输入", formatTokens(d.sumCacheRead)],
+        ["总输出", `${formatTokens(d.sumOutput)}（平均 ${formatTokens(avgOutput)}/次）`],
+        ["总token", `${formatTokens(totalPrompt)}（新增 + 缓存）`],
+        ["缓存命中率", `${cacheHitRate.toFixed(1)}%`],
+        ["平均速率", `${(d.sumTokensPerSec / d.count).toFixed(1)} t/s`],
+      ],
+    );
   }
 
   async function showStats(
@@ -1341,9 +1379,7 @@ export function createTokenStats(
     title: string,
     ctx: ExtensionContext,
   ) {
-    const theme = ctx.ui.theme;
-    const text = `${theme.fg("accent", theme.bold(title))}\n${theme.fg("dim", "─".repeat(42))}\n` +
-      lines.map((l) => theme.fg("dim", l)).join("\n");
+    const text = `## ${title}\n\n${lines.join("\n")}`;
     pi.sendMessage({
       customType: "token-stats",
       content: text,
@@ -1369,7 +1405,7 @@ export function createTokenStats(
     }
 
     await showStats(
-      renderDaySummary(daily).split("\n"),
+      renderDaySummary(daily),
       `Token 统计  |  ${date}`,
       ctx,
     );
@@ -1393,18 +1429,18 @@ export function createTokenStats(
 
     records.sort((a, b) => a.hour - b.hour);
 
-    const lines = [
-      "时  次数  输入      输出      命中率  速率",
-      "─".repeat(40),
-      ...records.map((r) =>
-        `${String(r.hour).padStart(2, "0")}  ` +
-        `${String(r.count).padStart(3)}  ` +
-        `${formatTokens(r.sumInput).padStart(7)}  ` +
-        `${formatTokens(r.sumOutput).padStart(7)}  ` +
-        `${weightedCacheHitRate(r).toFixed(1).padStart(5)}%  ` +
-        `${(r.sumTokensPerSec / r.count).toFixed(1).padStart(5)}`,
-      ),
-    ];
+    const lines = renderTable(
+      ["时间", "次数", "输入", "输出", "命中率", "速率"],
+      records.map((r) => [
+        String(r.hour).padStart(2, "0"),
+        String(r.count),
+        formatTokens(r.sumInput),
+        formatTokens(r.sumOutput),
+        `${weightedCacheHitRate(r).toFixed(1)}%`,
+        `${(r.sumTokensPerSec / r.count).toFixed(1)}`,
+      ]),
+      { aligns: ["left", "right", "right", "right", "right", "right"] },
+    );
 
     await showStats(lines, `按小时分布  |  ${date}`, ctx);
   }
@@ -1433,23 +1469,25 @@ export function createTokenStats(
       return;
     }
 
-    const lines = [
-      "日期        次数  新增输入  缓存输入  输出      总token   命中率  速率",
-      "─".repeat(70),
-      ...weekRecords.map((r) => {
+    const lines = renderTable(
+      ["日期", "次数", "新增输入", "缓存输入", "输出", "总token", "命中率", "速率"],
+      weekRecords.map((r) => {
         const totalPrompt = r.sumInput + r.sumCacheRead + r.sumCacheWrite;
-        return (
-          `${r.date}  ` +
-          `${String(r.count).padStart(3)}  ` +
-          `${formatTokens(r.sumInput).padStart(7)}  ` +
-          `${formatTokens(r.sumCacheRead).padStart(7)}  ` +
-          `${formatTokens(r.sumOutput).padStart(7)}  ` +
-          `${formatTokens(totalPrompt).padStart(7)}  ` +
-          `${weightedCacheHitRate(r).toFixed(1).padStart(5)}%  ` +
-          `${(r.sumTokensPerSec / r.count).toFixed(1).padStart(5)}`
-        );
+        return [
+          r.date,
+          String(r.count),
+          formatTokens(r.sumInput),
+          formatTokens(r.sumCacheRead),
+          formatTokens(r.sumOutput),
+          formatTokens(totalPrompt),
+          `${weightedCacheHitRate(r).toFixed(1)}%`,
+          `${(r.sumTokensPerSec / r.count).toFixed(1)}`,
+        ];
       }),
-    ];
+      {
+        aligns: ["left", "right", "right", "right", "right", "right", "right", "right"],
+      },
+    );
 
     await showStats(lines, "本周每天汇总", ctx);
   }
@@ -1495,40 +1533,46 @@ export function createTokenStats(
     const totalPrompt = total.sumInput + total.sumCacheRead + total.sumCacheWrite;
     const cacheHitRate = weightedCacheHitRate(total);
 
-    const lines = [
-      "日期        次数  新增输入  缓存输入  输出      总token   命中率  速率",
-      "─".repeat(70),
-      ...monthRecords.map((r) => {
+    const lines = renderTable(
+      ["日期", "次数", "新增输入", "缓存输入", "输出", "总token", "命中率", "速率"],
+      monthRecords.map((r) => {
         const tp = r.sumInput + r.sumCacheRead + r.sumCacheWrite;
-        return (
-          `${r.date}  ` +
-          `${String(r.count).padStart(3)}  ` +
-          `${formatTokens(r.sumInput).padStart(7)}  ` +
-          `${formatTokens(r.sumCacheRead).padStart(7)}  ` +
-          `${formatTokens(r.sumOutput).padStart(7)}  ` +
-          `${formatTokens(tp).padStart(7)}  ` +
-          `${weightedCacheHitRate(r).toFixed(1).padStart(5)}%  ` +
-          `${(r.sumTokensPerSec / r.count).toFixed(1).padStart(5)}`
-        );
+        return [
+          r.date,
+          String(r.count),
+          formatTokens(r.sumInput),
+          formatTokens(r.sumCacheRead),
+          formatTokens(r.sumOutput),
+          formatTokens(tp),
+          `${weightedCacheHitRate(r).toFixed(1)}%`,
+          `${(r.sumTokensPerSec / r.count).toFixed(1)}`,
+        ];
       }),
-      "",
-      `合计      ${String(total.count).padStart(3)}  ` +
-      `${formatTokens(total.sumInput).padStart(7)}  ` +
-      `${formatTokens(total.sumCacheRead).padStart(7)}  ` +
-      `${formatTokens(total.sumOutput).padStart(7)}  ` +
-      `${formatTokens(totalPrompt).padStart(7)}  ` +
-      `${cacheHitRate.toFixed(1).padStart(5)}%  ` +
-      `${(total.sumTokensPerSec / total.count).toFixed(1).padStart(5)}`,
-    ];
+      {
+        aligns: ["left", "right", "right", "right", "right", "right", "right", "right"],
+        totalRow: [
+          "合计",
+          String(total.count),
+          formatTokens(total.sumInput),
+          formatTokens(total.sumCacheRead),
+          formatTokens(total.sumOutput),
+          formatTokens(totalPrompt),
+          `${cacheHitRate.toFixed(1)}%`,
+          `${(total.sumTokensPerSec / total.count).toFixed(1)}`,
+        ],
+      },
+    );
 
     await showStats(lines, `${month} 月度汇总`, ctx);
   }
 
   // ── 事件注册 ─────────────────────────────────────────
 
-  // ── message renderer: 渲染 /stats 发出的消息 ─────────
-  pi.registerMessageRenderer("token-stats", (message, _options, _theme) => {
-    return new Text(message.content, 0, 0);
+  // ── message renderer: 渲染 /stats 发出的消息（markdown 表格）──
+  pi.registerMessageRenderer("token-stats", (message, _options, theme) => {
+    return new Markdown(message.content, 0, 0, getMarkdownTheme(), {
+      color: (text) => theme.fg("dim", text),
+    });
   });
 
   // ── turn_start: 记录时间 + 检测供应商切换 ──────────
