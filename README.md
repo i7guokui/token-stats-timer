@@ -16,7 +16,7 @@ Footer 上行（左对齐）：
 - `↑ ↓ Σ CH` —— 累计输入 / 输出 / 总量 / 缓存命中率
 - `⚡` —— 实时速率（2s rolling window，无流时回落到平均速率）
 - 上下文占用（样式可配）
-- `5h: W: ⏱` —— 套餐剩余（MiniMax / GLM / Kimi / DeepSeek 内置套餐，需在 /stats 里为当前 provider 启用）
+- `5h: W: ⏱` —— 套餐剩余（MiniMax / GLM / Kimi / DeepSeek / OpenCode Go 内置套餐，需在 /stats 里为当前 provider 启用）
 
 Footer 下行：cwd + git 分支 + 其他扩展状态。
 
@@ -100,6 +100,12 @@ Footer 下行：cwd + git 分支 + 其他扩展状态。
 ```
 
 > 组织 ID / 项目 ID 在 GLM Coding Plan 团队版后台「团队编程套餐」页面获取；如果你同时使用 Claude Code / Cursor 等工具并已在环境变量里配置，也可以在 config.json 里直接填上同名值。
+
+## OpenCode Go 余额
+
+OpenCode Go 订阅（`opencode-go` provider，baseUrl `https://opencode.ai/zen/go/v1`）使用官方配额接口 `GET /zen/go/v1/usage`（`Authorization: Bearer <key>`，即 auth.json 里 `opencode-go` 的 `key` 或环境变量 `OPENCODE_API_KEY`），返回三个滚动窗口的已用百分比：5 小时 / 周 / 月。
+
+footer 显示 `5h: X% W: Y% M: Z% ⏱ ...`（剩余比例 = 100 - 已用），后三个子项可分别用 `/stats config` → 显示内容 的「5h额度 / 周额度 / 月额度 / 刷新时间」开关控制。
 
 ## 与原包的兼容性
 

@@ -151,6 +151,7 @@ export type DisplayKey =
   | "context"     // 容量（ctx%）
   | "quota5h"     // 5h 额度
   | "quotaWeek"   // 周额度
+  | "quotaMonth"  // 月额度（OpenCode Go 等）
   | "quotaClock"  // 刷新时间（⏱）
 
 export interface DisplayConfig {
@@ -543,6 +544,73 @@ const BUILTIN_PLANS: TokenPlan[] = [
       };
     },
   },
+  {
+    id: "opencode-go",
+    name: "OpenCode Go",
+    matchProviders: ["opencode-go"],
+    apiKeyEnv: "OPENCODE_API_KEY",
+    baseUrl: "https://opencode.ai",
+    quotaPath: "/zen/go/v1/usage",
+    authHeader: (key) => ({ Authorization: "Bearer " + key }),
+    fetchQuota: async (plan: TokenPlan, key: string) => {
+      const r = await fetch(plan.baseUrl + plan.quotaPath, {
+        method: "GET",
+        headers: {
+          Authorization: "Bearer " + key,
+          "Content-Type": "application/json",
+        },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!r.ok) throw new Error("OpenCode Go 配额查询 HTTP " + r.status);
+      return await r.json();
+    },
+    format: (data: any) => {
+      // 官方 /v1/usage：percent 为已用比例，remaining = 100 - percent
+      const u = (data && typeof data === "object" ? (data.usage ?? data) : {}) as any;
+      const win = (k: string): any => {
+        const w = u?.[k];
+        if (w && w.status === "ok" && typeof w.percent === "number") return w;
+        return null;
+      };
+      const rolling = win("rolling");
+      const weekly = win("weekly");
+      const monthly = win("monthly");
+      if (!rolling && !weekly && !monthly) {
+        return { modelPrefix: "", display: "无数据", color: "err" as const };
+      }
+      const now = Date.now();
+      const resets = [rolling, weekly, monthly]
+        .filter((w): w is any => !!w)
+        .map((w) => {
+          const t = typeof w.resetsAt === "string" ? Date.parse(w.resetsAt) : NaN;
+          return Number.isFinite(t) && t > now ? t : null;
+        })
+        .filter((t): t is number => t !== null);
+      const nearestReset = resets.length > 0 ? Math.min(...resets) : null;
+
+      const rem = (w: any) => (w ? 100 - w.percent : null);
+      const r = rem(rolling);
+      const wk = rem(weekly);
+      const mo = rem(monthly);
+      const parts: string[] = [];
+      if (r !== null) parts.push(`5h: ${Math.round(r)}%`);
+      if (wk !== null) parts.push(`W: ${Math.round(wk)}%`);
+      if (mo !== null) parts.push(`M: ${Math.round(mo)}%`);
+      let display = parts.join(" ");
+      if (nearestReset) {
+        const diff = nearestReset - now;
+        if (diff > 0 && diff < 30 * 24 * 60 * 60 * 1000) {
+          display += ` ⏱ ${formatDuration(diff)}`;
+        }
+      }
+      const low = (v: number | null) => v !== null && v < 20;
+      const mid = (v: number | null) => v !== null && v < 50;
+      const color = low(r) || low(wk) || low(mo) ? "err" as const
+        : mid(r) || mid(wk) || mid(mo) ? "warn" as const
+          : "ok" as const;
+      return { modelPrefix: "", display, color };
+    },
+  },
 ];
 
 const DEFAULT_TOKEN_CONFIG: TokenConfig = { providerPlans: {}, ttl: 60 };
@@ -557,6 +625,7 @@ const DEFAULT_DISPLAY_CONFIG: DisplayConfig = {
     context: true,
     quota5h: true,
     quotaWeek: true,
+    quotaMonth: true,
     quotaClock: true,
   },
   contextStyle: "pct-window",
@@ -784,6 +853,10 @@ export function createTokenStats(
         }
         if (cfg.quotaWeek) {
           const m = fullDisplay.match(/\bW:\s+\d+%/);
+          if (m) filteredParts.push(m[0]);
+        }
+        if (cfg.quotaMonth) {
+          const m = fullDisplay.match(/\bM:\s+\d+%/);
           if (m) filteredParts.push(m[0]);
         }
         if (cfg.quotaClock) {
@@ -1969,12 +2042,12 @@ export function createTokenStats(
         } else if (subChoice === "显示内容") {
           const itemLabels: DisplayKey[] = [
             "input", "output", "totalTokens", "cacheHit", "speed", "context",
-            "quota5h", "quotaWeek", "quotaClock",
+            "quota5h", "quotaWeek", "quotaMonth", "quotaClock",
           ];
           const itemNames: Record<DisplayKey, string> = {
             input: "输入", output: "输出", totalTokens: "总token",
             cacheHit: "缓存命中", speed: "速度", context: "容量",
-            quota5h: "5h额度", quotaWeek: "周额度", quotaClock: "刷新时间",
+            quota5h: "5h额度", quotaWeek: "周额度", quotaMonth: "月额度", quotaClock: "刷新时间",
           };
           while (true) {
             const options = itemLabels.map(k =>
