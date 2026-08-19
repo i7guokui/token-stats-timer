@@ -1857,12 +1857,18 @@ export function createTokenStats(
   // ── /stats 命令 ─────────────────────────────────────
 
   pi.registerCommand("stats", {
-    description: "Token 统计 (day | hour | week | month | config)  无参默认进入套餐配置",
+    description: "Token 统计 (day | hour | week | month | config | limit)  无参默认显示当天统计；limit 进入套餐配置",
     handler: async (args, ctx) => {
       const arg = args.trim();
 
-      // 无参 → 套餐配置
+      // 无参 → 当天统计（等价于 /stats day）
       if (!arg) {
+        await showDay(getDateStr(), ctx);
+        return;
+      }
+
+      // limit → 套餐配置（原无参行为）
+      if (arg === "limit") {
         const provider = ctx.model?.provider;
         if (!provider) {
           ctx.ui.notify("无法获取当前供应商，请先切换对话", "warning");

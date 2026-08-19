@@ -76,8 +76,9 @@ Footer 下行：cwd + git 分支 + 其他扩展状态。
 
 ## 命令
 
-- `/stats` —— 无参进入套餐配置（为当前 provider 选择/关闭配额套餐；选 GLM 后会继续询问是否配置团队套餐凭证）
+- `/stats` —— 无参默认显示**当天 token 统计**（等价 `/stats day`）
 - `/stats day [YYYY-MM-DD]` / `hour` / `week` / `month [YYYY-MM]` —— 统计查询
+- `/stats limit` —— 套餐配置（为当前 provider 选择/关闭配额套餐；选 GLM 后会继续询问是否配置团队套餐凭证）
 - `/stats config` —— 显示样式 / 显示内容 / 配额刷新时间 / GLM 团队凭证
 - `/notify [on|off|test]` —— 通知开关 / 测试（无参查看状态）
 
