@@ -20,6 +20,7 @@ import {
   appendFile,
   mkdir,
   readFile,
+  readdir,
   writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
@@ -247,6 +248,134 @@ function renderTable(
     lines.push(`| ${opts.totalRow.map(esc).join(" | ")} |`);
   }
   return lines;
+}
+
+// ── 按模型统计（读取 raw 明细，按 model 聚合）────────────────────
+
+/** 读取若干日期的原始逐条记录 */
+async function readRawRecordsForDates(dates: string[]): Promise<RawRecord[]> {
+  const out: RawRecord[] = [];
+  for (const d of dates) {
+    try {
+      const content = await readFile(join(RAW_DIR, `${d}.jsonl`), "utf-8");
+      for (const line of content.trim().split("\n")) {
+        if (line) out.push(JSON.parse(line));
+      }
+    } catch {
+      // 该日无原始数据
+    }
+  }
+  return out;
+}
+
+/** 读取 [startDate, endDate] 闭区间内所有日期的原始记录 */
+async function readRawRecordsInRange(
+  startDate: string,
+  endDate: string,
+): Promise<RawRecord[]> {
+  const dates: string[] = [];
+  try {
+    const files = await readdir(RAW_DIR);
+    for (const f of files) {
+      if (!f.endsWith(".jsonl")) continue;
+      const d = f.slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(d) && d >= startDate && d <= endDate) {
+        dates.push(d);
+      }
+    }
+  } catch {
+    // RAW_DIR 不存在
+  }
+  return readRawRecordsForDates(dates);
+}
+
+interface ModelAgg {
+  count: number;
+  input: number;
+  cacheRead: number;
+  cacheWrite: number;
+  output: number;
+  tokensPerSecSum: number;
+  hitRateSum: number;
+}
+
+/** 按模型生成 markdown 用量表（模型行按总token降序，末尾合计） */
+function renderModelBreakdown(records: RawRecord[]): string[] {
+  if (records.length === 0) return ["", "> 按模型：该范围暂无明细数据"];
+
+  const byModel = new Map<string, ModelAgg>();
+  for (const r of records) {
+    const key = r.model || "unknown";
+    const agg = byModel.get(key) ?? {
+      count: 0,
+      input: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      output: 0,
+      tokensPerSecSum: 0,
+      hitRateSum: 0,
+    };
+    agg.count++;
+    agg.input += r.input;
+    agg.cacheRead += r.cacheRead;
+    agg.cacheWrite += r.cacheWrite;
+    agg.output += r.output;
+    agg.tokensPerSecSum += r.tokensPerSec;
+    agg.hitRateSum += r.cacheHitRate;
+    byModel.set(key, agg);
+  }
+
+  // 与汇总口径一致：总token = 新增输入 + 缓存输入
+  const totalTokensOf = (a: ModelAgg) => a.input + a.cacheRead + a.cacheWrite;
+  const rows = [...byModel.entries()].sort(
+    (a, b) => totalTokensOf(b[1]) - totalTokensOf(a[1]),
+  );
+
+  const total: ModelAgg = {
+    count: 0, input: 0, cacheRead: 0, cacheWrite: 0,
+    output: 0, tokensPerSecSum: 0, hitRateSum: 0,
+  };
+  const body: string[][] = rows.map(([model, agg]) => {
+    total.count += agg.count;
+    total.input += agg.input;
+    total.cacheRead += agg.cacheRead;
+    total.cacheWrite += agg.cacheWrite;
+    total.output += agg.output;
+    total.tokensPerSecSum += agg.tokensPerSecSum;
+    total.hitRateSum += agg.hitRateSum;
+    return [
+      model,
+      String(agg.count),
+      formatTokens(agg.input),
+      formatTokens(agg.cacheRead),
+      formatTokens(agg.output),
+      formatTokens(totalTokensOf(agg)),
+      `${(agg.count > 0 ? agg.hitRateSum / agg.count : 0).toFixed(1)}%`,
+      `${(agg.count > 0 ? agg.tokensPerSecSum / agg.count : 0).toFixed(1)}`,
+    ];
+  });
+
+  return [
+    "",
+    "**按模型**",
+    ...renderTable(
+      ["模型", "次数", "新增输入", "缓存输入", "输出", "总token", "命中率", "速率"],
+      body,
+      {
+        aligns: ["left", "right", "right", "right", "right", "right", "right", "right"],
+        totalRow: [
+          "合计",
+          String(total.count),
+          formatTokens(total.input),
+          formatTokens(total.cacheRead),
+          formatTokens(total.output),
+          formatTokens(total.input + total.cacheRead + total.cacheWrite),
+          `${(total.count > 0 ? total.hitRateSum / total.count : 0).toFixed(1)}%`,
+          `${(total.count > 0 ? total.tokensPerSecSum / total.count : 0).toFixed(1)}`,
+        ],
+      },
+    ),
+  ];
 }
 
 function isReasonableTokenSpeed(tokensPerSecond: number): boolean {
@@ -1478,7 +1607,7 @@ export function createTokenStats(
     }
 
     await showStats(
-      renderDaySummary(daily),
+      [...renderDaySummary(daily), ...renderModelBreakdown(await readRawRecordsForDates([date]))],
       `Token 统计  |  ${date}`,
       ctx,
     );
@@ -1562,7 +1691,11 @@ export function createTokenStats(
       },
     );
 
-    await showStats(lines, "本周每天汇总", ctx);
+    await showStats(
+      [...lines, ...renderModelBreakdown(await readRawRecordsInRange(sevenDaysAgo, today))],
+      "本周每天汇总",
+      ctx,
+    );
   }
 
   function getMonthStr(date: Date = new Date()): string {
@@ -1636,7 +1769,17 @@ export function createTokenStats(
       },
     );
 
-    await showStats(lines, `${month} 月度汇总`, ctx);
+    const monthDates = monthRecords.map((r) => r.date).sort();
+    await showStats(
+      [
+        ...lines,
+        ...renderModelBreakdown(
+          await readRawRecordsInRange(monthDates[0], monthDates[monthDates.length - 1]),
+        ),
+      ],
+      `${month} 月度汇总`,
+      ctx,
+    );
   }
 
   // ── 事件注册 ─────────────────────────────────────────
