@@ -196,7 +196,7 @@ type QuotaError =
  * Token 格式化（对齐 @firstpick/pi-utils formatTokens）
  */
 function formatTokens(count: number): string {
-  if (count < 1000) return count.toString();
+  if (count < 1000) return count.toFixed(1);
   if (count < 10000) return `${(count / 1000).toFixed(1)}k`;
   if (count < 1000000) return `${Math.round(count / 1000)}k`;
   if (count < 10000000) return `${(count / 1000000).toFixed(1)}M`;
@@ -1632,16 +1632,23 @@ export function createTokenStats(
     records.sort((a, b) => a.hour - b.hour);
 
     const lines = renderTable(
-      ["时间", "次数", "输入", "输出", "命中率", "速率"],
-      records.map((r) => [
-        String(r.hour).padStart(2, "0"),
-        String(r.count),
-        formatTokens(r.sumInput),
-        formatTokens(r.sumOutput),
-        `${weightedCacheHitRate(r).toFixed(1)}%`,
-        `${(r.sumTokensPerSec / r.count).toFixed(1)}`,
-      ]),
-      { aligns: ["left", "right", "right", "right", "right", "right"] },
+      ["时间", "次数", "新增输入", "缓存输入", "输出", "总token", "命中率", "速率"],
+      records.map((r) => {
+        const totalPrompt = r.sumInput + r.sumCacheRead + r.sumCacheWrite;
+        return [
+          String(r.hour).padStart(2, "0"),
+          String(r.count),
+          formatTokens(r.sumInput),
+          formatTokens(r.sumCacheRead),
+          formatTokens(r.sumOutput),
+          formatTokens(totalPrompt),
+          `${weightedCacheHitRate(r).toFixed(1)}%`,
+          `${(r.sumTokensPerSec / r.count).toFixed(1)}`,
+        ];
+      }),
+      {
+        aligns: ["left", "right", "right", "right", "right", "right", "right", "right"],
+      },
     );
 
     await showStats(lines, `按小时分布  |  ${date}`, ctx);
