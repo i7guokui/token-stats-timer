@@ -1,6 +1,6 @@
 {
   "name": "token-stats-timer",
-  "version": "1.2.0",
+  "version": "1.1.2",
   "description": "pi extension to display token usage and time spend. Persist preferred thinking level per model in pi",
   "keywords": [
     "pi-package",
@@ -29,6 +29,11 @@
       "./index.ts"
     ]
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/i7guokui/token-stats-timer.git"
+  },
+  "homepage": "https://github.com/i7guokui/token-stats-timer/tree/main#readme",
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*",
