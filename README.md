@@ -1,5 +1,7 @@
 # token-stats-timer
 
+> [English](README.en.md) | 简体中文（当前）
+
 `@liziy/token-stats` 的修改版本。
 
 一个扩展、一个 footer，同时提供 run 计时与 token 用量/配额监控。
@@ -19,15 +21,6 @@ Footer 上行（左对齐）：
 - `5h: W: ⏱` —— 套餐剩余（MiniMax / GLM / Kimi / DeepSeek / OpenCode Go 内置套餐，需在 /stats 里为当前 provider 启用）
 
 Footer 下行：cwd + git 分支 + 其他扩展状态。
-
-## 自动中英文文案（user-language）
-
-pi 没有内置的用户语言信息，扩展用启发式判断自动切换输出文案语言（通知、命令反馈、交互菜单、统计表头等）：
-
-- **初始猜测**：`LANG` 环境变量以 `zh` 开头 → 中文，其余 → 英文
-- **实时纠偏**：监听用户消息（`message_start`），按 CJK 汉字占比（≥20% 判为中文消息）统计最近 10 条，中文消息占比 ≥50% 时总语言切到中文
-- 判错时窗口会随后续消息自动纠偏；无需任何配置或命令
-- 不参与翻译：footer 指标符号（`↑ ↓ Σ CH ⚡`）、`Working...` 工作指示、命令名本身
 
 ## 按模型自动记忆思考强度（thinking-memory）
 

@@ -18,7 +18,8 @@
     "step-timer.ts",
     "thinking-memory.ts",
     "user-language.ts",
-    "README.md"
+    "README.md",
+    "README.en.md"
   ],
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
