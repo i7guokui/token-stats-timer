@@ -1,7 +1,7 @@
 {
   "name": "token-stats-timer",
-  "version": "1.1.1",
-  "description": "pi extension to display token usage and time spend.",
+  "version": "1.2.0",
+  "description": "pi extension to display token usage and time spend. Persist preferred thinking level per model in pi",
   "keywords": [
     "pi-package",
     "pi-extension"
@@ -17,6 +17,7 @@
     "notify.ts",
     "step-timer.ts",
     "thinking-memory.ts",
+    "user-language.ts",
     "README.md"
   ],
   "scripts": {

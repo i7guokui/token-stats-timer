@@ -25,6 +25,7 @@ import { createTokenStats, formatUserPath, type SharedState } from "./token-stat
 import { createNotifier } from "./notify.ts";
 import { createStepTimer } from "./step-timer.ts";
 import { createThinkingMemory } from "./thinking-memory.ts";
+import { createUserLanguage } from "./user-language.ts";
 
 const shared: SharedState = {
   sessionActive: false,
@@ -33,6 +34,10 @@ const shared: SharedState = {
 
 export default function runTokenStatsExtension(pi: ExtensionAPI) {
   const stats = createTokenStats(pi, shared);
+
+  // 语言判断最先初始化：其他模块的文案随用户语言切换
+  createUserLanguage(pi);
+
   // macOS 完成通知（成功/失败/中止），配置见 notify-config.json
   createNotifier(pi);
   // 每步耗时：Thinking.../Working... 实时耗时 + 每 turn/总耗时会话摘要

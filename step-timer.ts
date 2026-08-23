@@ -10,6 +10,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Box, Text } from "@earendil-works/pi-tui";
+import { t } from "./user-language.ts";
 
 /** 一次 run 的总耗时汇总(appendEntry "timing-final") */
 export interface FinalTimingData {
@@ -95,7 +96,7 @@ export function createStepTimer(pi: ExtensionAPI): void {
   pi.registerEntryRenderer<FinalTimingData>(FINAL_TYPE, (entry, _opts, theme) => {
     const d = entry.data;
     if (!d) return undefined;
-    const title = theme.fg("accent", "总耗时");
+    const title = theme.fg("accent", t("总耗时", "Total time"));
     const box = new Box(1, 1, (text) => theme.bg("customMessageBg", text));
     box.addChild(new Text(`${title} ${formatDuration(d.totalMs)}`, 0, 0));
     return box;

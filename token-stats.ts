@@ -26,6 +26,7 @@ import {
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { existsSync, readFileSync } from "node:fs";
+import { t } from "./user-language.ts";
 
 // ── 共享状态（由 index.ts 注入，footer 渲染与模块解耦）──
 
@@ -301,7 +302,7 @@ interface ModelAgg {
 
 /** 按模型生成 markdown 用量表（模型行按总token降序，末尾合计） */
 function renderModelBreakdown(records: RawRecord[]): string[] {
-  if (records.length === 0) return ["", "> 按模型：该范围暂无明细数据"];
+  if (records.length === 0) return ["", t("> 按模型：该范围暂无明细数据", "> By model: no detail data in this range")];
 
   const byModel = new Map<string, ModelAgg>();
   for (const r of records) {
@@ -357,14 +358,14 @@ function renderModelBreakdown(records: RawRecord[]): string[] {
 
   return [
     "",
-    "**按模型**",
+    "**" + t("按模型", "By model") + "**",
     ...renderTable(
-      ["模型", "次数", "新增输入", "缓存输入", "输出", "总token", "命中率", "速率"],
+      [t("模型", "Model"), t("次数", "Count"), t("新增输入", "New input"), t("缓存输入", "Cached input"), t("输出", "Output"), t("总token", "Total tokens"), t("命中率", "Hit rate"), t("速率", "Speed")],
       body,
       {
         aligns: ["left", "right", "right", "right", "right", "right", "right", "right"],
         totalRow: [
-          "合计",
+          t("合计", "Total"),
           String(total.count),
           formatTokens(total.input),
           formatTokens(total.cacheRead),
@@ -486,7 +487,7 @@ const BUILTIN_PLANS: TokenPlan[] = [
       });
       const data = await r.json();
       if (data.base_resp?.status_code === 0) return data;
-      throw new Error(data.base_resp?.status_msg || "MiniMax 返回错误");
+      throw new Error(data.base_resp?.status_msg || t("MiniMax 返回错误", "MiniMax returned an error"));
     },
     format: (data: any) => {
       const models = data.model_remains || [];
@@ -536,7 +537,7 @@ const BUILTIN_PLANS: TokenPlan[] = [
         headers,
         signal: AbortSignal.timeout(5000),
       });
-      if (!r.ok) throw new Error("GLM 配额查询 HTTP " + r.status);
+      if (!r.ok) throw new Error(t("GLM 配额查询 HTTP " + r.status, "GLM quota query HTTP " + r.status));
       return await r.json();
     },
     format: (data: any) => {
@@ -607,7 +608,7 @@ const BUILTIN_PLANS: TokenPlan[] = [
         headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
         signal: AbortSignal.timeout(5000),
       });
-      if (!r.ok) throw new Error("Kimi 配额查询 HTTP " + r.status);
+      if (!r.ok) throw new Error(t("Kimi 配额查询 HTTP " + r.status, "Kimi quota query HTTP " + r.status));
       return await r.json();
     },
     format: (data: any) => {
@@ -658,7 +659,7 @@ const BUILTIN_PLANS: TokenPlan[] = [
         headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
         signal: AbortSignal.timeout(5000),
       });
-      if (!r.ok) throw new Error("DeepSeek 配额查询 HTTP " + r.status);
+      if (!r.ok) throw new Error(t("DeepSeek 配额查询 HTTP " + r.status, "DeepSeek quota query HTTP " + r.status));
       return await r.json();
     },
     format: (data: any) => {
@@ -690,7 +691,7 @@ const BUILTIN_PLANS: TokenPlan[] = [
         },
         signal: AbortSignal.timeout(5000),
       });
-      if (!r.ok) throw new Error("OpenCode Go 配额查询 HTTP " + r.status);
+      if (!r.ok) throw new Error(t("OpenCode Go 配额查询 HTTP " + r.status, "OpenCode Go quota query HTTP " + r.status));
       return await r.json();
     },
     format: (data: any) => {
@@ -1383,19 +1384,22 @@ export function createTokenStats(
    * 把 quotaState.error 格式化为人类可读提示。
    */
   function formatQuotaError(state: QuotaDisplayState | null | undefined): string {
-    if (!state || !state.error) return "未知错误";
+    if (!state || !state.error) return t("未知错误", "Unknown error");
     const e = state.error;
     switch (e.kind) {
       case "no_plan":
-        return "该 provider 未配置套餐";
+        return t("该 provider 未配置套餐", "No quota plan configured for this provider");
       case "key_missing":
-        return `未设置环境变量 ${e.envVar} 或 ~/.pi/agent/auth.json 中 ${e.provider} 的 key 字段`;
+        return t(
+          `未设置环境变量 ${e.envVar} 或 ~/.pi/agent/auth.json 中 ${e.provider} 的 key 字段`,
+          `Missing env var ${e.envVar} or key field for ${e.provider} in ~/.pi/agent/auth.json`,
+        );
       case "api_error":
-        return `API 返回错误: ${e.message}`;
+        return `API ${t("返回错误", "error")}: ${e.message}`;
       case "network_error":
-        return `网络/超时: ${e.message}`;
+        return `${t("网络/超时", "Network timeout")}: ${e.message}`;
       case "no_data":
-        return "接口返回无数据";
+        return t("接口返回无数据", "API returned no data");
     }
   }
 
@@ -1501,16 +1505,22 @@ export function createTokenStats(
     const curLabel =
       cur?.organization && cur?.project
         ? `${cur.organization} / ${cur.project}`
-        : "未配置（按个人版查询）";
+        : t("未配置（按个人版查询）", "not configured (personal query)");
+    const prompts = [t("✏️ 配置/修改", "✏️ Configure / Edit"), t("跳过", "Skip")];
     const choice = await ctx.ui.select(
-      `GLM 团队套餐凭证？当前：${curLabel}\n填写组织 ID + 项目 ID（二者齐全才走团队查询 ?type=2），跳过则维持个人版查询`,
-      ["✏️ 配置/修改", "跳过"],
+      t(
+        `GLM 团队套餐凭证？当前：${curLabel}\n填写组织 ID + 项目 ID（二者齐全才走团队查询 ?type=2），跳过则维持个人版查询`,
+        `GLM team plan credentials? Current: ${curLabel}\nEnter organization ID + project ID (team query ?type=2 needs both), skip to keep personal query`,
+      ),
+      prompts,
     );
-    if (!choice || choice === "跳过") {
+    if (!choice || choice === prompts[1]) {
       await forceRefreshQuota(ctx);
       const errMsg = quotaState?.error ? formatQuotaError(quotaState) : "";
       ctx.ui.notify(
-        quotaState?.error ? `GLM 配额查询失败：${errMsg}` : "GLM 配额已启用（个人版查询）",
+        quotaState?.error
+          ? t(`GLM 配额查询失败：${errMsg}`, `GLM quota query failed: ${errMsg}`)
+          : t("GLM 配额已启用（个人版查询）", "GLM quota enabled (personal query)"),
         "info",
       );
       return;
@@ -1521,7 +1531,7 @@ export function createTokenStats(
     const org = organization?.trim() ?? "";
     const proj = project?.trim() ?? "";
     if (!org || !proj) {
-      ctx.ui.notify("组织/项目 ID 不能为空，团队凭证未保存", "warning");
+      ctx.ui.notify(t("组织/项目 ID 不能为空，团队凭证未保存", "Organization/Project ID cannot be empty, credentials not saved"), "warning");
       return;
     }
 
@@ -1534,7 +1544,9 @@ export function createTokenStats(
     await forceRefreshQuota(ctx);
     const errMsg = quotaState?.error ? formatQuotaError(quotaState) : "";
     ctx.ui.notify(
-      quotaState?.error ? `GLM 团队配额查询失败：${errMsg}` : "GLM 团队套餐配额已启用",
+      quotaState?.error
+        ? t(`GLM 团队配额查询失败：${errMsg}`, `GLM team quota query failed: ${errMsg}`)
+        : t("GLM 团队套餐配额已启用", "GLM team quota enabled"),
       "info",
     );
   }
@@ -1563,15 +1575,15 @@ export function createTokenStats(
     const cacheHitRate = weightedCacheHitRate(d);
 
     return renderTable(
-      ["指标", "数值"],
+      [t("指标", "Metric"), t("数值", "Value")],
       [
-        ["对话次数", String(d.count)],
-        ["新增输入", `${formatTokens(d.sumInput)}（平均 ${formatTokens(avgInput)}/次，未命中缓存）`],
-        ["缓存输入", formatTokens(d.sumCacheRead)],
-        ["总输出", `${formatTokens(d.sumOutput)}（平均 ${formatTokens(avgOutput)}/次）`],
-        ["总token", `${formatTokens(totalPrompt)}（新增 + 缓存）`],
-        ["缓存命中率", `${cacheHitRate.toFixed(1)}%`],
-        ["平均速率", `${(d.sumTokensPerSec / d.count).toFixed(1)} t/s`],
+        [t("对话次数", "Sessions"), String(d.count)],
+        [t("新增输入", "New input"), `${formatTokens(d.sumInput)}（${t("平均", "avg")} ${formatTokens(avgInput)}/次，${t("未命中缓存", "uncached")}）`],
+        [t("缓存输入", "Cached input"), formatTokens(d.sumCacheRead)],
+        [t("总输出", "Total output"), `${formatTokens(d.sumOutput)}（${t("平均", "avg")} ${formatTokens(avgOutput)}/次）`],
+        [t("总token", "Total tokens"), `${formatTokens(totalPrompt)}（${t("新增 + 缓存", "new + cached")}）`],
+        [t("缓存命中率", "Cache hit rate"), `${cacheHitRate.toFixed(1)}%`],
+        [t("平均速率", "Avg speed"), `${(d.sumTokensPerSec / d.count).toFixed(1)} t/s`],
       ],
     );
   }
@@ -1602,13 +1614,13 @@ export function createTokenStats(
     const daily = records.find((r) => r.date === date) || null;
 
     if (!daily) {
-      ctx.ui.notify(`${date} 暂无统计数据`, "info");
+      ctx.ui.notify(t(`${date} 暂无统计数据`, `No stats for ${date}`), "info");
       return;
     }
 
     await showStats(
       [...renderDaySummary(daily), ...renderModelBreakdown(await readRawRecordsForDates([date]))],
-      `Token 统计  |  ${date}`,
+      t(`Token 统计  |  ${date}`, `Token stats  |  ${date}`),
       ctx,
     );
   }
@@ -1625,14 +1637,14 @@ export function createTokenStats(
     }
 
     if (records.length === 0) {
-      ctx.ui.notify(`${date} 暂无按小时统计`, "info");
+      ctx.ui.notify(t(`${date} 暂无按小时统计`, `No hourly stats for ${date}`), "info");
       return;
     }
 
     records.sort((a, b) => a.hour - b.hour);
 
     const lines = renderTable(
-      ["时间", "次数", "新增输入", "缓存输入", "输出", "总token", "命中率", "速率"],
+      [t("时间", "Time"), t("次数", "Count"), t("新增输入", "New input"), t("缓存输入", "Cached input"), t("输出", "Output"), t("总token", "Total tokens"), t("命中率", "Hit rate"), t("速率", "Speed")],
       records.map((r) => {
         const totalPrompt = r.sumInput + r.sumCacheRead + r.sumCacheWrite;
         return [
@@ -1674,12 +1686,12 @@ export function createTokenStats(
       .sort((a, b) => a.date.localeCompare(b.date));
 
     if (weekRecords.length === 0) {
-      ctx.ui.notify("本周暂无统计数据", "info");
+      ctx.ui.notify(t("本周暂无统计数据", "No stats for this week"), "info");
       return;
     }
 
     const lines = renderTable(
-      ["日期", "次数", "新增输入", "缓存输入", "输出", "总token", "命中率", "速率"],
+      [t("日期", "Date"), t("次数", "Count"), t("新增输入", "New input"), t("缓存输入", "Cached input"), t("输出", "Output"), t("总token", "Total tokens"), t("命中率", "Hit rate"), t("速率", "Speed")],
       weekRecords.map((r) => {
         const totalPrompt = r.sumInput + r.sumCacheRead + r.sumCacheWrite;
         return [
@@ -1700,7 +1712,7 @@ export function createTokenStats(
 
     await showStats(
       [...lines, ...renderModelBreakdown(await readRawRecordsInRange(sevenDaysAgo, today))],
-      "本周每天汇总",
+      t("本周每天汇总", "Week summary by day"),
       ctx,
     );
   }
@@ -1726,7 +1738,7 @@ export function createTokenStats(
       .sort((a, b) => a.date.localeCompare(b.date));
 
     if (monthRecords.length === 0) {
-      ctx.ui.notify(`${month} 暂无统计数据`, "info");
+      ctx.ui.notify(t(`${month} 暂无统计数据`, `No stats for ${month}`), "info");
       return;
     }
 
@@ -1747,7 +1759,7 @@ export function createTokenStats(
     const cacheHitRate = weightedCacheHitRate(total);
 
     const lines = renderTable(
-      ["日期", "次数", "新增输入", "缓存输入", "输出", "总token", "命中率", "速率"],
+      [t("日期", "Date"), t("次数", "Count"), t("新增输入", "New input"), t("缓存输入", "Cached input"), t("输出", "Output"), t("总token", "Total tokens"), t("命中率", "Hit rate"), t("速率", "Speed")],
       monthRecords.map((r) => {
         const tp = r.sumInput + r.sumCacheRead + r.sumCacheWrite;
         return [
@@ -1764,7 +1776,7 @@ export function createTokenStats(
       {
         aligns: ["left", "right", "right", "right", "right", "right", "right", "right"],
         totalRow: [
-          "合计",
+          t("合计", "Total"),
           String(total.count),
           formatTokens(total.sumInput),
           formatTokens(total.sumCacheRead),
@@ -2007,7 +2019,10 @@ export function createTokenStats(
   // ── /stats 命令 ─────────────────────────────────────
 
   pi.registerCommand("stats", {
-    description: "Token 统计 (day | hour | week | month | config | limit)  无参默认显示当天统计；limit 进入套餐配置",
+    description: t(
+      "Token 统计 (day | hour | week | month | config | limit)  无参默认显示当天统计；limit 进入套餐配置",
+      "Token stats (day | hour | week | month | config | limit)  No arg shows today; limit enters quota plan config",
+    ),
     handler: async (args, ctx) => {
       const arg = args.trim();
 
@@ -2021,19 +2036,19 @@ export function createTokenStats(
       if (arg === "limit") {
         const provider = ctx.model?.provider;
         if (!provider) {
-          ctx.ui.notify("无法获取当前供应商，请先切换对话", "warning");
+          ctx.ui.notify(t("无法获取当前供应商，请先切换对话", "Cannot get current provider, switch conversation first"), "warning");
           return;
         }
         // 套餐用量选择菜单
-        const options = ["关闭", ...BUILTIN_PLANS.map(p => p.name)];
+        const options = [t("关闭", "Off"), ...BUILTIN_PLANS.map(p => p.name)];
         const choice = await ctx.ui.select(
-          "选择 " + provider + " 要显示配额的套餐（选中后退出）",
+          t("选择 " + provider + " 要显示配额的套餐（选中后退出）", "Select quota plan to show for " + provider + " (select to exit)"),
           options,
         );
 
         const defaults: TokenConfig = { providerPlans: {}, ttl: 60 };
 
-        if (!choice || choice === "关闭") {
+        if (!choice || choice === options[0]) {
           tokenConfig = tokenConfig
             ? { ...tokenConfig, providerPlans: { ...tokenConfig.providerPlans, [provider]: null } }
             : { ...defaults, providerPlans: { [provider]: null } };
@@ -2049,7 +2064,7 @@ export function createTokenStats(
             shared.requestRender?.();
           }, (tokenConfig?.ttl || 60) * 1000);
           shared.requestRender?.();
-          ctx.ui.notify(provider + " 的套餐用量已关闭", "info");
+          ctx.ui.notify(t(provider + " 的套餐用量已关闭", "Quota display for " + provider + " is off"), "info");
           return;
         }
         const plan = BUILTIN_PLANS.find(p => p.name === choice);
@@ -2077,50 +2092,52 @@ export function createTokenStats(
           if (quotaState?.error) {
             // 仅当 quotaState 带有 error 字段时（key 缺失 / API 错误 / 网络错误 / 无数据）才提示"查询失败"
             const errMsg = formatQuotaError(quotaState);
-            ctx.ui.notify(`${plan.name} 配额查询失败：${errMsg}`, "info");
+            ctx.ui.notify(t(`${plan.name} 配额查询失败：${errMsg}`, `${plan.name} quota query failed: ${errMsg}`), "info");
           } else {
-            ctx.ui.notify(plan.name + " 配额已启用", "info");
+            ctx.ui.notify(t(plan.name + " 配额已启用", plan.name + " quota enabled"), "info");
           }
         }
         return;
       }
 
       if (arg === "config") {
-        const subChoice = await ctx.ui.select("配置", [
-          "显示样式",
-          "显示内容",
-          "刷新时间  (当前 " + (tokenConfig?.ttl || 60) + "s)",
-          "GLM 团队凭证",
-        ]);
+        const cfgOpts = [
+          t("显示样式", "Display style"),
+          t("显示内容", "Display items"),
+          t(`刷新时间  (当前 ${tokenConfig?.ttl || 60}s)`, `Refresh interval (current ${tokenConfig?.ttl || 60}s)`),
+          t("GLM 团队凭证", "GLM team credentials"),
+        ];
+        const subChoice = await ctx.ui.select(t("配置", "Settings"), cfgOpts);
         if (!subChoice) return;
 
-        if (subChoice === "GLM 团队凭证") {
+        if (subChoice === cfgOpts[3]) {
           const cur = tokenConfig?.teamCredential;
           const label =
             cur?.organization && cur?.project
               ? `${cur.organization} / ${cur.project}`
-              : "未配置";
-          const action = await ctx.ui.select("GLM 团队凭证（当前: " + label + "）", [
-            "✏️ 配置/修改",
-            "清除",
-            "返回",
-          ]);
-          if (!action || action === "返回") return;
-          if (action === "清除") {
+              : t("未配置", "not configured");
+          const actions = [
+            t("✏️ 配置/修改", "✏️ Configure / Edit"),
+            t("清除", "Clear"),
+            t("返回", "Back"),
+          ];
+          const action = await ctx.ui.select(t("GLM 团队凭证（当前: " + label + "）", "GLM team credentials (current: " + label + ")"), actions);
+          if (!action || action === actions[2]) return;
+          if (action === actions[1]) {
             tokenConfig = {
               ...baseTokenConfig(),
               teamCredential: { organization: "", project: "" },
             };
             await saveTokenConfig(tokenConfig);
             await forceRefreshQuota(ctx);
-            ctx.ui.notify("GLM 团队凭证已清除（恢复个人版查询）", "info");
+            ctx.ui.notify(t("GLM 团队凭证已清除（恢复个人版查询）", "GLM team credentials cleared (back to personal query)"), "info");
           } else {
             const organization = await ctx.ui.input("组织 ID (Organization)", cur?.organization ?? "");
             const project = await ctx.ui.input("项目 ID (Project)", cur?.project ?? "");
             const org = organization?.trim() ?? "";
             const proj = project?.trim() ?? "";
             if (!org || !proj) {
-              ctx.ui.notify("组织/项目 ID 不能为空，未保存", "warning");
+              ctx.ui.notify(t("组织/项目 ID 不能为空，未保存", "Organization/Project ID cannot be empty, not saved"), "warning");
               return;
             }
             tokenConfig = {
@@ -2131,22 +2148,20 @@ export function createTokenStats(
             await forceRefreshQuota(ctx);
             const errMsg = quotaState?.error ? formatQuotaError(quotaState) : "";
             if (quotaState?.error) {
-              ctx.ui.notify(`GLM 团队配额查询失败：${errMsg}`, "info");
+              ctx.ui.notify(t(`GLM 团队配额查询失败：${errMsg}`, `GLM team quota query failed: ${errMsg}`), "info");
             } else {
-              ctx.ui.notify("GLM 团队凭证已保存（团队查询已生效）", "info");
+              ctx.ui.notify(t("GLM 团队凭证已保存（团队查询已生效）", "GLM team credentials saved (team query active)"), "info");
             }
           }
           return;
         }
 
-        if (subChoice === "显示样式") {
-          const catChoice = await ctx.ui.select("选择要配置的样式类别", [
-            "上下文样式",
-            "⚡ 速率样式",
-          ]);
+        if (subChoice === cfgOpts[0]) {
+          const catOpts = [t("上下文样式", "Context style"), t("⚡ 速率样式", "⚡ Speed style")];
+          const catChoice = await ctx.ui.select(t("选择要配置的样式类别", "Select style category to configure"), catOpts);
           if (!catChoice) return;
 
-          if (catChoice === "上下文样式") {
+          if (catChoice === catOpts[0]) {
             const items: { label: string; value: ContextStyle; preview: string }[] = [
               { label: "pct-window", value: "pct-window", preview: `5.3%/1.0M` },
               { label: "used-window", value: "used-window", preview: `256k/1.0M` },
@@ -2155,7 +2170,7 @@ export function createTokenStats(
               { label: "bar", value: "bar", preview: `[██░░░░░░] 25%` },
             ];
             const choice = await ctx.ui.select(
-              "上下文样式（当前: " + displayConfig.contextStyle + "）",
+              t("上下文样式（当前: " + displayConfig.contextStyle + "）", "Context style (current: " + displayConfig.contextStyle + ")"),
               items.map(i =>
                 (displayConfig.contextStyle === i.value ? "● " : "○ ") + i.label + "  " + i.preview
               ),
@@ -2175,10 +2190,10 @@ export function createTokenStats(
               { label: "t/s", value: "t/s", preview: `⚡77.7 t/s` },
               { label: "tok/s", value: "tok/s", preview: `⚡77.7 tok/s` },
               { label: "T/s", value: "T/s", preview: `⚡77.7 T/s` },
-              { label: "live@速率", value: "liveAt", preview: `⚡1.2k@77.7` },
+              { label: t("live@速率", "live@rate"), value: "liveAt", preview: `⚡1.2k@77.7` },
             ];
             const choice = await ctx.ui.select(
-              "⚡ 速率样式（当前: " + displayConfig.speedStyle + "）",
+              t("⚡ 速率样式（当前: " + displayConfig.speedStyle + "）", "⚡ Speed style (current: " + displayConfig.speedStyle + ")"),
               items.map(i =>
                 (displayConfig.speedStyle === i.value ? "● " : "○ ") + i.label + "  " + i.preview
               ),
@@ -2194,24 +2209,24 @@ export function createTokenStats(
               }
             }
           }
-          ctx.ui.notify("显示样式已保存", "info");
-        } else if (subChoice === "显示内容") {
+          ctx.ui.notify(t("显示样式已保存", "Display style saved"), "info");
+        } else if (subChoice === cfgOpts[1]) {
           const itemLabels: DisplayKey[] = [
             "input", "output", "totalTokens", "cacheHit", "speed", "context",
             "quota5h", "quotaWeek", "quotaMonth", "quotaClock",
           ];
           const itemNames: Record<DisplayKey, string> = {
-            input: "输入", output: "输出", totalTokens: "总token",
-            cacheHit: "缓存命中", speed: "速度", context: "容量",
-            quota5h: "5h额度", quotaWeek: "周额度", quotaMonth: "月额度", quotaClock: "刷新时间",
+            input: t("输入", "Input"), output: t("输出", "Output"), totalTokens: t("总token", "Total tokens"),
+            cacheHit: t("缓存命中", "Cache hit"), speed: t("速度", "Speed"), context: t("容量", "Context"),
+            quota5h: t("5h额度", "5h quota"), quotaWeek: t("周额度", "Week quota"), quotaMonth: t("月额度", "Month quota"), quotaClock: t("刷新时间", "Refresh time"),
           };
           while (true) {
             const options = itemLabels.map(k =>
               `${displayConfig.items[k] ? "✅" : "⬜"} ${itemNames[k]}`,
             );
-            options.push("🔙 完成");
-            const choice = await ctx.ui.select("选择要切换显示的项目", options);
-            if (!choice || choice === "🔙 完成") break;
+            options.push(t("🔙 完成", "🔙 Done"));
+            const choice = await ctx.ui.select(t("选择要切换显示的项目", "Select items to toggle"), options);
+            if (!choice || choice === options[options.length - 1]) break;
             const idx = options.indexOf(choice);
             if (idx >= 0 && idx < itemLabels.length) {
               const key = itemLabels[idx];
@@ -2223,13 +2238,13 @@ export function createTokenStats(
               shared.requestRender?.();
             }
           }
-          ctx.ui.notify("状态栏显示配置已保存", "info");
-        } else if (subChoice === "刷新时间  (当前 " + (tokenConfig?.ttl || 60) + "s)") {
-          const input = await ctx.ui.input("输入刷新间隔（秒）", String(tokenConfig?.ttl || 60));
+          ctx.ui.notify(t("状态栏显示配置已保存", "Status bar display config saved"), "info");
+        } else if (subChoice === cfgOpts[2]) {
+          const input = await ctx.ui.input(t("输入刷新间隔（秒）", "Refresh interval in seconds"), String(tokenConfig?.ttl || 60));
           if (input) {
             const sec = parseInt(input, 10);
             if (Number.isNaN(sec) || sec < 10) {
-              ctx.ui.notify("刷新时间必须 >= 10 秒", "warning");
+              ctx.ui.notify(t("刷新时间必须 >= 10 秒", "Refresh interval must be >= 10s"), "warning");
             } else {
               tokenConfig = tokenConfig
                 ? { ...tokenConfig, ttl: sec }
@@ -2244,7 +2259,7 @@ export function createTokenStats(
                 } catch { /* ctx 已失效（session 被替换），忽略 */ }
                 shared.requestRender?.();
               }, sec * 1000);
-              ctx.ui.notify("刷新时间已设为 " + sec + " 秒", "info");
+              ctx.ui.notify(t("刷新时间已设为 " + sec + " 秒", "Refresh interval set to " + sec + "s"), "info");
             }
           }
         }
@@ -2258,7 +2273,7 @@ export function createTokenStats(
         if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
           await showDay(date, ctx);
         } else {
-          ctx.ui.notify("用法: /stats day YYYY-MM-DD", "warning");
+          ctx.ui.notify(t("用法: /stats day YYYY-MM-DD", "Usage: /stats day YYYY-MM-DD"), "warning");
         }
       } else if (arg === "hour") {
         await showHourly(getDateStr(), ctx);
@@ -2267,7 +2282,7 @@ export function createTokenStats(
         if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
           await showHourly(date, ctx);
         } else {
-          ctx.ui.notify("用法: /stats hour YYYY-MM-DD", "warning");
+          ctx.ui.notify(t("用法: /stats hour YYYY-MM-DD", "Usage: /stats hour YYYY-MM-DD"), "warning");
         }
       } else if (arg === "week") {
         await showWeek(ctx);
@@ -2278,11 +2293,11 @@ export function createTokenStats(
         if (/^\d{4}-\d{2}$/.test(ms)) {
           await showMonth(ms, ctx);
         } else {
-          ctx.ui.notify("用法: /stats month YYYY-MM", "warning");
+          ctx.ui.notify(t("用法: /stats month YYYY-MM", "Usage: /stats month YYYY-MM"), "warning");
         }
       } else {
         ctx.ui.notify(
-          "用法: /stats [day [date] | hour [date] | week | month [YYYY-MM] | config]",
+          t("用法: /stats [day [date] | hour [date] | week | month [YYYY-MM] | config]", "Usage: /stats [day [date] | hour [date] | week | month [YYYY-MM] | config]"),
           "warning",
         );
       }

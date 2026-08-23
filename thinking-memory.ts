@@ -18,6 +18,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { t } from "./user-language.ts";
 
 type ThinkingLevel = Parameters<ExtensionAPI["setThinkingLevel"]>[0];
 
@@ -93,15 +94,30 @@ export function createThinkingMemory(pi: ExtensionAPI): void {
   }
 
   pi.registerCommand("auto-remember-thinking-level", {
-    description: "自动记忆思考强度: on | off（无参查看状态）",
+    description: t(
+      "自动记忆思考强度: on | off（无参查看状态）",
+      "Auto-remember thinking level: on | off (no arg shows status)",
+    ),
     handler: (args, ctx) => {
       const arg = args.trim();
       if (arg === "on" || arg === "off") {
         cfg = { ...cfg, enabled: arg === "on" };
         saveConfig(cfg);
-        ctx.ui.notify(`自动记忆思考强度已${arg === "on" ? "开启" : "关闭"}`, "info");
+        ctx.ui.notify(
+          t(
+            `自动记忆思考强度已${arg === "on" ? "开启" : "关闭"}`,
+            `Auto-remember thinking level ${arg === "on" ? "enabled" : "disabled"}`,
+          ),
+          "info",
+        );
       } else {
-        ctx.ui.notify(`自动记忆思考强度: ${cfg.enabled ? "开" : "关"}`, "info");
+        ctx.ui.notify(
+          t(
+            `自动记忆思考强度: ${cfg.enabled ? "开" : "关"}`,
+            `Auto-remember thinking level: ${cfg.enabled ? "on" : "off"}`,
+          ),
+          "info",
+        );
       }
     },
   });

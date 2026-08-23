@@ -28,8 +28,7 @@
 // 便于排查"没弹通知"是触发问题还是投递问题。
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { spawn, spawnSync } from "node:child_process";
-import {
+import { spawn, spawnSync } from "node:child_process";import {
   appendFileSync,
   existsSync,
   mkdirSync,
@@ -38,6 +37,7 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { t } from "./user-language.ts";
 
 const CONFIG_DIR = join(homedir(), ".pi/agent/extensions/token-stats");
 const CONFIG_FILE = join(CONFIG_DIR, "notify-config.json");
@@ -238,15 +238,16 @@ export function createNotifier(pi: ExtensionAPI): void {
     if (runAborted) {
       if (config.onAbort) {
         notify(
-          "⏹ pi 已中止",
-          `耗时：${dur}\n${truncate("执行被中止")}`,
+          t("⏹ pi 已中止", "⏹ pi aborted"),
+          t(`耗时：${dur}`, `Duration: ${dur}`) +
+            `\n${truncate(t("执行被中止", "Execution aborted"))}`,
           config.sound,
         );
       }
     } else if (config.onSuccess) {
       notify(
-        "✅ pi 执行完成",
-        `耗时：${dur}`,
+        t("✅ pi 执行完成", "✅ pi task finished"),
+        t(`耗时：${dur}`, `Duration: ${dur}`),
         config.sound,
       );
     }
@@ -258,42 +259,57 @@ export function createNotifier(pi: ExtensionAPI): void {
   // 会话关闭时提示（可选）
   pi.on("session_shutdown", () => {
     if (config.enabled && config.onSessionEnd) {
-      notify("👋 pi 会话结束", "session 已关闭", config.sound);
+      notify(t("👋 pi 会话结束", "👋 pi session ended"), t("session 已关闭", "Session closed"), config.sound);
     }
   });
 
   // ── /notify 命令 ─────────────────────────────────────
   pi.registerCommand("notify", {
-    description: "macOS 完成通知: on | off | status | test（详细配置见 notify-config.json）",
+    description: t(
+      "macOS 完成通知: on | off | status | test（详细配置见 notify-config.json）",
+      "macOS completion notifications: on | off | status | test (see notify-config.json)",
+    ),
     handler: async (args, ctx) => {
       const arg = args.trim();
       if (arg === "on") {
         config = { ...config, enabled: true };
         saveConfig(config);
-        ctx.ui.notify("完成通知已开启", "info");
+        ctx.ui.notify(t("完成通知已开启", "Completion notifications enabled"), "info");
       } else if (arg === "off") {
         config = { ...config, enabled: false };
         saveConfig(config);
-        ctx.ui.notify("完成通知已关闭", "info");
+        ctx.ui.notify(t("完成通知已关闭", "Completion notifications disabled"), "info");
       } else if (arg === "test") {
         // 立即发一条测试通知，验证当前投递通道是否可达
-        const title = "🔔 pi 通知测试";
+        const title = t("🔔 pi 通知测试", "🔔 pi notification test");
         const channel = isITerm2()
-          ? "osc9 终端协议"
+          ? t("osc9 终端协议", "osc9 terminal protocol")
           : supportsOSC777()
-            ? "osc777 终端协议"
+            ? t("osc777 终端协议", "osc777 terminal protocol")
             : existsSync("/opt/homebrew/bin/terminal-notifier") ||
               existsSync("/usr/local/bin/terminal-notifier")
               ? "terminal-notifier"
               : "osascript";
-        notify(title, `投递通道：${channel}\n时间：${new Date().toLocaleTimeString()}`, config.sound);
-        ctx.ui.notify("测试通知已发送，请查看系统通知栏", "info");
+        notify(
+          title,
+          t(`投递通道：${channel}\n时间：${new Date().toLocaleTimeString()}`, 
+            `Channel: ${channel}\nTime: ${new Date().toLocaleTimeString()}`),
+          config.sound,
+        );
+        ctx.ui.notify(t("测试通知已发送，请查看系统通知栏", "Test notification sent, check Notification Center"), "info");
       } else {
-        const sound = config.sound ? `, 声音=${config.sound}` : ", 静音";
+        const sound = config.sound
+          ? t(`, 声音=${config.sound}`, `, sound=${config.sound}`)
+          : t(", 静音", ", silent");
         ctx.ui.notify(
-          `完成通知: ${config.enabled ? "开" : "关"}, 最短时长=${config.minDurationSec}s, ` +
-            `成功=${config.onSuccess ? "开" : "关"}, ` +
-            `中止=${config.onAbort ? "开" : "关"}, 会话结束=${config.onSessionEnd ? "开" : "关"}${sound}`,
+          t(
+            `完成通知: ${config.enabled ? "开" : "关"}, 最短时长=${config.minDurationSec}s, ` +
+              `成功=${config.onSuccess ? "开" : "关"}, ` +
+              `中止=${config.onAbort ? "开" : "关"}, 会话结束=${config.onSessionEnd ? "开" : "关"}${sound}`,
+            `Notifications: ${config.enabled ? "on" : "off"}, min duration=${config.minDurationSec}s, ` +
+              `success=${config.onSuccess ? "on" : "off"}, ` +
+              `abort=${config.onAbort ? "on" : "off"}, session end=${config.onSessionEnd ? "on" : "off"}${sound}`,
+          ),
           "info",
         );
       }
