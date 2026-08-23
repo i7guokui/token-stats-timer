@@ -1,6 +1,6 @@
 {
   "name": "token-stats-timer",
-  "version": "1.0.18",
+  "version": "1.1.0",
   "description": "pi extension to display token usage and time spend.",
   "keywords": [
     "pi-package",
@@ -16,6 +16,7 @@
     "token-stats.ts",
     "notify.ts",
     "step-timer.ts",
+    "thinking-memory.ts",
     "README.md"
   ],
   "scripts": {

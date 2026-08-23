@@ -20,6 +20,31 @@ Footer 上行（左对齐）：
 
 Footer 下行：cwd + git 分支 + 其他扩展状态。
 
+## 按模型自动记忆思考强度（thinking-memory）
+
+不用命令手动设置，**手动切换思考强度时自动记录**为当前模型的默认级别，
+会话启动 / 切换模型时自动恢复。参考 `@tifan/pi-preferred-thinking` 的按模型偏好机制，
+改为以实际切换行为作为记忆来源（默认开启）：
+
+- 手动切换 thinking level（快捷键 / /thinking / 设置界面）→ 自动记录到当前模型
+- `session_start` / `model_select` → 自动应用该模型记忆的级别
+- 自身 `setThinkingLevel` 与模型切换引发的级别变化（如不支持 max 被 clamp）不会误记录
+
+- `/auto-remember-thinking-level` —— 无参查看状态；`on` / `off` 启用或禁用（默认开启）
+
+配置：`~/.pi/agent/extensions/token-stats/auto-remember-thinking-level.json`
+
+```json
+{
+  "enabled": true,
+  "levels": {
+    "opencode-go/deepseek-v4-flash": "max"
+  }
+}
+```
+
+> 若同时安装原 `@tifan/pi-preferred-thinking`，其 session_start 自动应用会与本功能互相覆盖，建议二选一。
+
 ## macOS 完成通知
 
 每次 run（agent 任务）结束后弹系统通知，区分两种结果：
@@ -81,6 +106,7 @@ Footer 下行：cwd + git 分支 + 其他扩展状态。
 - `/stats limit` —— 套餐配置（为当前 provider 选择/关闭配额套餐；选 GLM 后会继续询问是否配置团队套餐凭证）
 - `/stats config` —— 显示样式 / 显示内容 / 配额刷新时间 / GLM 团队凭证
 - `/notify [on|off|test]` —— 通知开关 / 测试（无参查看状态）
+- `/auto-remember-thinking-level [on|off]` —— 自动记忆思考强度开关（无参查看状态）
 
 ## GLM 团队套餐（Team Plan）
 

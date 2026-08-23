@@ -10,6 +10,9 @@
 // 模块划分：
 //   run-timer.ts   —— run 计时状态机 + session 持久化（原 pi-run-timer）
 //   token-stats.ts —— token 统计 + 套餐配额 + JSONL 日志 + /stats（原 token-stats）
+//   notify.ts      —— macOS 完成通知（成功/失败/中止）
+//   step-timer.ts  —— 任务计时（Working 实时耗时 + 总耗时汇总）
+//   thinking-memory.ts —— 按模型自动记忆思考强度（手动切换时记录，默认开启）
 //
 // 与两个原包的兼容性：
 //   - 配置沿用 ~/.pi/agent/extensions/token-stats/{config.json,display-config.json}
@@ -21,6 +24,7 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { createTokenStats, formatUserPath, type SharedState } from "./token-stats.ts";
 import { createNotifier } from "./notify.ts";
 import { createStepTimer } from "./step-timer.ts";
+import { createThinkingMemory } from "./thinking-memory.ts";
 
 const shared: SharedState = {
   sessionActive: false,
@@ -33,6 +37,8 @@ export default function runTokenStatsExtension(pi: ExtensionAPI) {
   createNotifier(pi);
   // 每步耗时：Thinking.../Working... 实时耗时 + 每 turn/总耗时会话摘要
   createStepTimer(pi);
+  // 按模型自动记忆思考强度（/auto-remember-thinking-level），默认开启
+  createThinkingMemory(pi);
 
   pi.on("session_start", (_event, ctx) => {
     shared.sessionActive = true;
