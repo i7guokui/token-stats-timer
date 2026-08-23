@@ -114,7 +114,7 @@ Footer 下行：cwd + git 分支 + 其他扩展状态。
 
 本插件在**组织 ID 与项目 ID 都配置**时才走团队查询，否则回退个人版查询：
 
-- 启用 GLM 套餐后（`/stats` 选 GLM）会自动弹出团队凭证配置询问，可「✏️ 配置/修改」或「跳过」
+- 启用 GLM 套餐后（`/stats limit` 选 GLM）会自动弹出团队凭证配置询问，可「✏️ 配置/修改」或「跳过」
 - 随时可通过 `/stats config` → 「GLM 团队凭证」修改或清除
 - 凭证保存在 `~/.pi/agent/extensions/token-stats/config.json` 的 `teamCredential` 字段：
 
