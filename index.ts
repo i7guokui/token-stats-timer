@@ -35,8 +35,8 @@ const shared: SharedState = {
 export default function runTokenStatsExtension(pi: ExtensionAPI) {
   const stats = createTokenStats(pi, shared);
 
-  // 语言判断最先初始化：其他模块的文案随用户语言切换
-  createUserLanguage(pi);
+  // 语言判断最先初始化：其他模块的文案随用户语言切换（直接读环境变量）
+  createUserLanguage();
 
   // macOS 完成通知（成功/失败/中止），配置见 notify-config.json
   createNotifier(pi);
