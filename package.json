@@ -1,6 +1,6 @@
 {
   "name": "token-stats-timer",
-  "version": "1.1.3",
+  "version": "1.1.4",
   "description": "pi extension to display token usage and time spend. Persist preferred thinking level per model in pi",
   "keywords": [
     "pi-package",
