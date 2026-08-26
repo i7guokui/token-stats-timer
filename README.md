@@ -18,7 +18,7 @@ Footer 上行（左对齐）：
 - `↑ ↓ Σ CH` —— 累计输入 / 输出 / 总量 / 缓存命中率
 - `⚡` —— 实时速率（2s rolling window，无流时回落到平均速率）
 - 上下文占用（样式可配）
-- `5h: W: ⏱` —— 套餐剩余（MiniMax / GLM / Kimi / DeepSeek / OpenCode Go 内置套餐，需在 /stats 里为当前 provider 启用）
+- `5h: W: ⏱` —— 套餐剩余（MiniMax / GLM / Kimi / DeepSeek / OpenCode Go / Command Code 内置套餐，需在 /stats 里为当前 provider 启用）
 
 Footer 下行：cwd + git 分支 + 其他扩展状态。
 

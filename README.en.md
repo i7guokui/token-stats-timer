@@ -18,7 +18,7 @@ Footer, top line (left-aligned):
 - `↑ ↓ Σ CH` —— cumulative input / output / total / cache hit rate
 - `⚡` —— live speed (2s rolling window; falls back to the average speed while idle)
 - Context usage (style configurable)
-- `5h: W: ⏱` —— quota remaining (built-in plans for MiniMax / GLM / Kimi / DeepSeek / OpenCode Go; enable per provider in `/stats`)
+- `5h: W: ⏱` —— quota remaining (built-in plans for MiniMax / GLM / Kimi / DeepSeek / OpenCode Go / Command Code; enable per provider in `/stats`)
 
 Footer, bottom line: cwd + git branch + statuses from other extensions.
 

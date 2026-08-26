@@ -2,7 +2,7 @@
 // =============================================================================
 // 由 @liziy/token-stats 1.3.3 移植而来，与 @carlosgtrz/pi-run-timer 合并为一个插件。
 // Footer 实时显示：run 计时 + 输入/输出/总量 + 缓存命中率 + 输出速率 + 上下文占用
-// + 5h/周 套餐剩余（MiniMax / GLM / Kimi / DeepSeek 内置套餐）
+// + 5h/周 套餐剩余（MiniMax / GLM / Kimi / DeepSeek / OpenCode Go / Command Code 内置套餐）
 // 每轮对话自动落 JSONL，/stats 命令按日/小时/周/月查询
 //
 // 配置持久化：~/.pi/agent/extensions/token-stats/（与原包兼容，历史配置直接生效）
@@ -741,7 +741,147 @@ const BUILTIN_PLANS: TokenPlan[] = [
       return { modelPrefix: "", display, color };
     },
   },
+  {
+    id: "commandcode",
+    name: "Command Code",
+    // pi 内 commandcode provider：auth.json 里 key 为 user_...；models.json 的 provider id 可能是 cmd 或 commandcode
+    matchProviders: ["cmd", "commandcode"],
+    apiKeyEnv: "COMMANDCODE_API_KEY",
+    baseUrl: "https://api.commandcode.ai",
+    quotaPath: "/alpha/billing/credits",
+    authHeader: (key) => ({ Authorization: "Bearer " + key }),
+    fetchQuota: async (plan: TokenPlan, key: string) => {
+      // Command Code 官方 alpha 计费接口（与官方 CLI 同款协议）：
+      //   GET /alpha/whoami        → 用户信息，org.id 非空时后续请求带 ?orgId=xxx
+      //   GET /alpha/billing/credits → { credits, windowLimits: { fiveHour, weekly } }
+      //   GET /alpha/billing/subscriptions → { success, data: { planId, currentPeriodEnd } }
+      // 需要 User-Agent / x-command-code-version 头（与 command-code CLI 一致），否则部分接口 403。
+      const headers: Record<string, string> = {
+        ...plan.authHeader(key),
+        "Content-Type": "application/json",
+        "User-Agent": "command-code/0.38.2",
+        "x-command-code-version": "0.38.2",
+      };
+      const whoami = await fetch(plan.baseUrl + "/alpha/whoami", {
+        method: "GET",
+        headers,
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!whoami.ok) throw new Error(t("Command Code whoami 查询 HTTP " + whoami.status, "Command Code whoami query HTTP " + whoami.status));
+      const whoamiData = await whoami.json();
+      const orgId = whoamiData?.org?.id as string | undefined;
+      const qs = orgId ? `?orgId=${encodeURIComponent(orgId)}` : "";
+
+      const [creditsR, subR] = await Promise.all([
+        fetch(plan.baseUrl + plan.quotaPath + qs, {
+          method: "GET",
+          headers,
+          signal: AbortSignal.timeout(5000),
+        }),
+        fetch(plan.baseUrl + "/alpha/billing/subscriptions" + qs, {
+          method: "GET",
+          headers,
+          signal: AbortSignal.timeout(5000),
+        }).catch(() => null), // 订阅信息缺失时降级（仅影响月额度分母）
+      ]);
+      if (!creditsR.ok) throw new Error(t("Command Code 配额查询 HTTP " + creditsR.status, "Command Code quota query HTTP " + creditsR.status));
+      const creditsData = await creditsR.json();
+      let subData: any = null;
+      if (subR && subR.ok) {
+        try { subData = await subR.json(); } catch { /* ignore */ }
+      }
+      return { credits: creditsData, subscription: subData };
+    },
+    format: (data: any) => {
+      const credits = data?.credits?.credits || {};
+      const windows = data?.credits?.windowLimits || {};
+      const fiveHour = windows.fiveHour;
+      const weekly = windows.weekly;
+
+      // 滚动窗口：used/cap 为美元金额，剩余 = (cap - used) / cap
+      const remOf = (w: any): number | null => {
+        if (!w || typeof w !== "object") return null;
+        const cap = Number(w.cap);
+        const used = Number(w.used ?? 0);
+        if (!Number.isFinite(cap) || cap <= 0) return null;
+        return Math.max(0, Math.min(100, ((cap - used) / cap) * 100));
+      };
+      const intervalRemaining = remOf(fiveHour);
+      const weeklyRemaining = remOf(weekly);
+
+      // 月额度：接口只报剩余（monthlyCredits），分母来自订阅 planId 的公开套餐目录
+      // （5h/周 cap 与目录一致才信，防止套餐调价后算错百分比）
+      const sub = data?.subscription?.data;
+      const planId = String(sub?.planId || "").toLowerCase();
+      const plan = COMMANDCODE_PLANS[planId as keyof typeof COMMANDCODE_PLANS];
+      const monthlyRemaining = Number(credits.monthlyCredits ?? NaN);
+      let monthlyPercent: number | null = null;
+      if (
+        plan &&
+        Number.isFinite(monthlyRemaining) &&
+        monthlyRemaining <= plan.monthlyCreditsUsd &&
+        fiveHour?.cap !== undefined &&
+        Number(fiveHour.cap) === plan.fiveHourCapUsd &&
+        weekly?.cap !== undefined &&
+        Number(weekly.cap) === plan.weeklyCapUsd
+      ) {
+        monthlyPercent = (monthlyRemaining / plan.monthlyCreditsUsd) * 100;
+      }
+
+      // 最近重置时间（5h / 周 / 月账单周期，取最早）
+      // resetAt 秒级/毫秒级都可能是：>2e10 视为毫秒（当前毫秒时间戳 ~1.78e12），否则按秒处理
+      const now = Date.now();
+      const resets: number[] = [];
+      for (const w of [fiveHour, weekly]) {
+        const t = Number(w?.resetAt ?? 0);
+        if (Number.isFinite(t) && t > 0) {
+          const ms = t > 20000000000 ? t : t * 1000;
+          if (ms > now) resets.push(ms);
+        }
+      }
+      const periodEnd = sub?.currentPeriodEnd;
+      if (periodEnd) {
+        const ms = new Date(periodEnd).getTime();
+        if (Number.isFinite(ms) && ms > now) resets.push(ms);
+      }
+      const nearestReset = resets.length > 0 ? Math.min(...resets) : null;
+
+      const parts: string[] = [];
+      if (intervalRemaining !== null) parts.push(`5h: ${Math.round(intervalRemaining)}%`);
+      if (weeklyRemaining !== null) parts.push(`W: ${Math.round(weeklyRemaining)}%`);
+      if (monthlyPercent !== null) parts.push(`M: ${Math.round(monthlyPercent)}%`);
+      if (monthlyPercent === null && Number.isFinite(monthlyRemaining)) {
+        parts.push(`$${monthlyRemaining.toFixed(0)}`); // 未知套餐：只显示剩余金额（美元）
+      }
+      let display = parts.join(" ");
+      if (!display) display = "无数据";
+      if (nearestReset) {
+        const diff = nearestReset - now;
+        if (diff > 0 && diff < 30 * 24 * 60 * 60 * 1000) {
+          display += ` ⏱ ${formatDuration(diff)}`;
+        }
+      }
+      const low = (v: number | null) => v !== null && v < 20;
+      const mid = (v: number | null) => v !== null && v < 50;
+      const color = low(intervalRemaining) || low(weeklyRemaining) || low(monthlyPercent) ? "err" as const
+        : mid(intervalRemaining) || mid(weeklyRemaining) || mid(monthlyPercent) ? "warn" as const
+          : "ok" as const;
+      return { modelPrefix: "", display, color };
+    },
+  },
 ];
+
+/**
+ * Command Code 公开套餐目录（5h/周 cap 与月额度，来源 commandcode.ai 定价页）。
+ * 月额度接口只返回剩余值，需按 planId 匹配此表拿到分母；cap 与接口返回值一致才采用。
+ */
+const COMMANDCODE_PLANS: Record<string, { label: string; monthlyCreditsUsd: number; fiveHourCapUsd: number; weeklyCapUsd: number }> = {
+  "individual-go": { label: "Go", monthlyCreditsUsd: 10, fiveHourCapUsd: 3, weeklyCapUsd: 6 },
+  "individual-goat": { label: "GOAT", monthlyCreditsUsd: 70, fiveHourCapUsd: 14, weeklyCapUsd: 35 },
+  "individual-pro": { label: "Pro", monthlyCreditsUsd: 80, fiveHourCapUsd: 16, weeklyCapUsd: 40 },
+  "individual-max": { label: "Max 10x", monthlyCreditsUsd: 150, fiveHourCapUsd: 45, weeklyCapUsd: 90 },
+  "individual-ultra": { label: "Max 20x", monthlyCreditsUsd: 300, fiveHourCapUsd: 90, weeklyCapUsd: 180 },
+};
 
 const DEFAULT_TOKEN_CONFIG: TokenConfig = { providerPlans: {}, ttl: 60 };
 

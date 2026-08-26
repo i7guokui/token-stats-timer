@@ -4,8 +4,8 @@
 //              （输入/输出/总量、缓存命中、速率、上下文、套餐配额），右侧模型名
 // Footer 下行：cwd + git 分支 + 其他扩展状态
 //
-// 命令：/stats [day [date] | hour [date] | week | month [YYYY-MM] | config]
-//       无参进入套餐配置
+// 命令：/stats [day [date] | hour [date] | week | month [YYYY-MM] | limit | config]
+//       无参显示当天统计；limit 进入套餐配置；config 进入样式/刷新设置
 //
 // 模块划分：
 //   run-timer.ts   —— run 计时状态机 + session 持久化（原 pi-run-timer）
