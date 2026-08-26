@@ -15,10 +15,19 @@ import { t } from "./user-language.ts";
 /** 一次 run 的总耗时汇总(appendEntry "timing-final") */
 export interface FinalTimingData {
   totalMs: number;
+  /** 完成时刻(epoch ms),渲染为 24 小时制系统时间 */
+  endAt: number;
 }
 
 const FINAL_TYPE = "timing-final";
 const TICK_MS = 1000;
+
+/** 24 小时制系统时间,如 2026-08-26 10:20:12 */
+function formatSystemTime(epochMs: number): string {
+  const d = new Date(epochMs);
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
 
 function formatDuration(ms: number): string {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
@@ -54,8 +63,10 @@ export function createStepTimer(pi: ExtensionAPI): void {
   }
 
   function appendFinal(): void {
+    const endAt = Date.now();
     pi.appendEntry<FinalTimingData>(FINAL_TYPE, {
-      totalMs: Date.now() - runStartMs,
+      totalMs: endAt - runStartMs,
+      endAt,
     });
   }
 
@@ -98,7 +109,7 @@ export function createStepTimer(pi: ExtensionAPI): void {
     if (!d) return undefined;
     const title = theme.fg("accent", t("总耗时", "Total time"));
     const box = new Box(1, 1, (text) => theme.bg("customMessageBg", text));
-    box.addChild(new Text(`${title} ${formatDuration(d.totalMs)}`, 0, 0));
+    box.addChild(new Text(`${title}：${formatDuration(d.totalMs)} [${formatSystemTime(d.endAt ?? Date.now())}]`, 0, 0));
     return box;
   });
 }
