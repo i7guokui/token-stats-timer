@@ -41,7 +41,7 @@ export default function runTokenStatsExtension(pi: ExtensionAPI) {
   // macOS 完成通知（成功/失败/中止），配置见 notify-config.json
   createNotifier(pi);
   // 每步耗时：Thinking.../Working... 实时耗时 + 每 turn/总耗时会话摘要
-  createStepTimer(pi);
+  createStepTimer(pi, shared);
   // 按模型自动记忆思考强度（/auto-remember-thinking-level），默认开启
   createThinkingMemory(pi);
 

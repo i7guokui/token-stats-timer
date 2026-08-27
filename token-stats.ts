@@ -35,6 +35,23 @@ export interface SharedState {
   sessionActive: boolean;
   /** 由 footer 注册的渲染请求函数；footer 销毁或 session 关闭时置 null */
   requestRender: (() => void) | null;
+  /** 单次 run（agent_start → agent_settled）的 token 统计读取器；由 createTokenStats 注入 */
+  getRunStats?: () => RunTokenStats | null;
+}
+
+/** 一次 run 的 token 汇总（供 step-timer 汇总条目使用，格式对齐 footer） */
+export interface RunTokenStats {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  turns: number;
+  /** 平均输出速率（output / run 总耗时，t/s） */
+  tokensPerSec: number;
+  /** 缓存命中率（%，cacheRead / prompt 总量） */
+  cacheHitRate: number;
+  /** run 内是否至少完成一次 message_end */
+  hasData: boolean;
 }
 
 // ── 路径 ──────────────────────────────────────────────────
@@ -196,7 +213,7 @@ type QuotaError =
 /**
  * Token 格式化（对齐 @firstpick/pi-utils formatTokens）
  */
-function formatTokens(count: number): string {
+export function formatTokens(count: number): string {
   if (count < 1000) return count.toFixed(1);
   if (count < 10000) return `${(count / 1000).toFixed(1)}k`;
   if (count < 1000000) return `${Math.round(count / 1000)}k`;
@@ -204,7 +221,7 @@ function formatTokens(count: number): string {
   return `${Math.round(count / 1000000)}M`;
 }
 
-function formatTokenSpeed(tokensPerSecond: number): string {
+export function formatTokenSpeed(tokensPerSecond: number): string {
   if (tokensPerSecond < 100) {
     if (tokensPerSecond >= 10) return tokensPerSecond.toFixed(1);
     return tokensPerSecond.toFixed(2);
@@ -955,6 +972,38 @@ export function createTokenStats(
   let quotaTimerId: ReturnType<typeof setInterval> | null = null;
   let tokenConfig: TokenConfig | null = null;
   let lastQuotaProvider: string | null = null;
+
+  // ── run 级 token 累加（agent_start 重置，agent_settled 时供 step-timer 读取）──
+
+  let runStats = {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    turns: 0,
+  };
+  let runStartMs = 0;
+  let runLastMsgMs = 0;
+
+  function resetRunStats(): void {
+    runStats = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, turns: 0 };
+    runStartMs = Date.now();
+    runLastMsgMs = 0;
+  }
+
+  /** 读取当前 run 的 token 汇总（无数据返回 hasData=false） */
+  function getRunStats(): RunTokenStats {
+    if (runStats.turns === 0) {
+      return { ...runStats, tokensPerSec: 0, cacheHitRate: 0, hasData: false };
+    }
+    const totalMs = runLastMsgMs - runStartMs;
+    const tokensPerSec = totalMs >= 50 ? runStats.output / (totalMs / 1000) : 0;
+    const totalPrompt = runStats.input + runStats.cacheRead + runStats.cacheWrite;
+    const cacheHitRate = totalPrompt > 0 ? (runStats.cacheRead / totalPrompt) * 100 : 0;
+    return { ...runStats, tokensPerSec, cacheHitRate, hasData: true };
+  }
+
+  shared.getRunStats = getRunStats;
 
   let displayConfig: DisplayConfig = {
     ...DEFAULT_DISPLAY_CONFIG,
@@ -1950,6 +1999,11 @@ export function createTokenStats(
     });
   });
 
+  // ── agent_start: 重置 run 级 token 累加 ──────────
+  pi.on("agent_start", (_event, _ctx) => {
+    resetRunStats();
+  });
+
   // ── turn_start: 记录时间 + 检测供应商切换 ──────────
   pi.on("turn_start", async (_event, ctx) => {
     stats.turnStartTime = Date.now();
@@ -2079,6 +2133,14 @@ export function createTokenStats(
     stats.totalCost += cost;
     stats.totalCacheHitRateSum += cacheHitRate;
     stats.turnCount++;
+
+    // 累加到当前 run（agent_start → agent_settled）
+    runStats.input += usage.input;
+    runStats.output += usage.output;
+    runStats.cacheRead += usage.cacheRead;
+    runStats.cacheWrite += usage.cacheWrite;
+    runStats.turns++;
+    runLastMsgMs = Date.now();
 
     shared.requestRender?.();
 

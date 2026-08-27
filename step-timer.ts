@@ -11,12 +11,20 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Box, Text } from "@earendil-works/pi-tui";
 import { t } from "./user-language.ts";
+import {
+  formatTokens,
+  formatTokenSpeed,
+  type RunTokenStats,
+  type SharedState,
+} from "./token-stats.ts";
 
 /** 一次 run 的总耗时汇总(appendEntry "timing-final") */
 export interface FinalTimingData {
   totalMs: number;
   /** 完成时刻(epoch ms),渲染为 24 小时制系统时间 */
   endAt: number;
+  /** 本次 run 的 token 汇总（对齐 footer 指标；无数据时 null） */
+  runStats: RunTokenStats | null;
 }
 
 const FINAL_TYPE = "timing-final";
@@ -41,7 +49,7 @@ function formatDuration(ms: number): string {
   return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
 }
 
-export function createStepTimer(pi: ExtensionAPI): void {
+export function createStepTimer(pi: ExtensionAPI, shared: SharedState): void {
   let lastCtx: ExtensionContext | undefined;
   let tick: ReturnType<typeof setInterval> | undefined;
 
@@ -67,6 +75,7 @@ export function createStepTimer(pi: ExtensionAPI): void {
     pi.appendEntry<FinalTimingData>(FINAL_TYPE, {
       totalMs: endAt - runStartMs,
       endAt,
+      runStats: shared.getRunStats?.() ?? null,
     });
   }
 
@@ -108,8 +117,29 @@ export function createStepTimer(pi: ExtensionAPI): void {
     const d = entry.data;
     if (!d) return undefined;
     const title = theme.fg("accent", t("总耗时", "Total time"));
+
+    // 第一行：完成时刻（24 小时制系统时间）独占一行，最醒目
+    const lines = [`[${formatSystemTime(d.endAt ?? Date.now())}]`];
+
+    // 第二行：总耗时 + 本次 run 的 token 指标（对齐 footer 风格）
+    const seg: string[] = [];
+    seg.push(`${title}：${formatDuration(d.totalMs)}`);
+    const s = d.runStats;
+    if (s && s.hasData) {
+      const dim = (x: string) => theme.fg("dim", x);
+      const ok = (x: string) => theme.fg("success", x);
+      const warn = (x: string) => theme.fg("warning", x);
+      seg.push(`↑${formatTokens(s.input)}`);
+      seg.push(`↓${formatTokens(s.output)}`);
+      seg.push(`Σ${formatTokens(s.input + s.output)}`);
+      const chColor = s.cacheHitRate >= 80 ? ok : s.cacheHitRate >= 50 ? (x: string) => x : warn;
+      seg.push(`${dim("CH")}${chColor(`${s.cacheHitRate.toFixed(0)}%`)}`);
+      seg.push(`⚡${ok(formatTokenSpeed(s.tokensPerSec))} t/s`);
+    }
+    lines.push(seg.join("  "));
+
     const box = new Box(1, 1, (text) => theme.bg("customMessageBg", text));
-    box.addChild(new Text(`${title}：${formatDuration(d.totalMs)} [${formatSystemTime(d.endAt ?? Date.now())}]`, 0, 0));
+    box.addChild(new Text(lines.join("\n"), 0, 0));
     return box;
   });
 }
