@@ -1066,7 +1066,7 @@ export function createTokenStats(
         const chColor = cumCH >= 80 ? ok
           : cumCH >= 50 ? (s: string) => s
           : warn;
-        segParts.push(`${dim("CH")}${chColor(`${cumCH.toFixed(0)}%`)}`);
+        segParts.push(`${dim("CH")}${chColor(`${cumCH.toFixed(1)}%`)}`);
       }
       if (segParts.length > 0) parts.push(segParts.join(" "));
     }
