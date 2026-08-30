@@ -133,7 +133,7 @@ export function createStepTimer(pi: ExtensionAPI, shared: SharedState): void {
       seg.push(`↓${formatTokens(s.output)}`);
       seg.push(`Σ${formatTokens(s.input + s.output)}`);
       const chColor = s.cacheHitRate >= 80 ? ok : s.cacheHitRate >= 50 ? (x: string) => x : warn;
-      seg.push(`${dim("CH")}${chColor(`${s.cacheHitRate.toFixed(0)}%`)}`);
+      seg.push(`${dim("CH")}${chColor(`${s.cacheHitRate.toFixed(1)}%`)}`);
       seg.push(`⚡${ok(formatTokenSpeed(s.tokensPerSec))} t/s`);
     }
     lines.push(seg.join("  "));
