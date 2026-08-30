@@ -1636,6 +1636,7 @@ export function createTokenStats(
         color: fmt.color,
         fetchedAt: cached.fetchedAt,
       };
+      shared.requestRender?.();
       return;
     }
 
@@ -1673,6 +1674,8 @@ export function createTokenStats(
         : { kind: "api_error", message: msg },
       );
     }
+    // 结果（成功或失败）一到即触发 footer 重绘，避免启动时后台刷新完成后不交互不显示
+    shared.requestRender?.();
   }
 
   async function forceRefreshQuota(ctx: ExtensionContext) {
@@ -2201,9 +2204,9 @@ export function createTokenStats(
     // 清空所有 plan 的缓存（避免跨 session 复用旧数据）
     await invalidateAllQuotaCache();
     if (quotaTimerId) clearInterval(quotaTimerId);
-    // 第一次强制刷新（绕缓存）
-    await refreshQuota(ctx, true);
-    shared.requestRender?.();
+    // 启动刷新：先读缓存秒显，缓存过期（ttl）才发网络请求，且不阻塞会话初始化
+    // （旧实现 await refreshQuota(ctx, true) 强制绕过缓存联网，实测可拖慢启动 ~1.9s）
+    void refreshQuota(ctx, false).catch(() => {});
     quotaTimerId = setInterval(async () => {
       if (!shared.sessionActive) return;
       try {
