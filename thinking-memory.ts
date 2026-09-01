@@ -15,6 +15,7 @@
 // 单独设置命令，以用户的实际切换行为作为记忆来源。
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { AutocompleteItem } from "@earendil-works/pi-tui";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -98,7 +99,15 @@ export function createThinkingMemory(pi: ExtensionAPI): void {
       "自动记忆思考强度: on | off（无参查看状态）",
       "Auto-remember thinking level: on | off (no arg shows status)",
     ),
-    handler: (args, ctx) => {
+    getArgumentCompletions: (argumentPrefix: string): AutocompleteItem[] | null => {
+      if (typeof argumentPrefix !== "string") return null;
+      const prefix = argumentPrefix.trim().toLowerCase();
+      const matches = ["on", "off"]
+        .filter((v) => v.startsWith(prefix))
+        .map((v) => ({ value: v, label: v }));
+      return matches.length > 0 ? matches : null;
+    },
+    handler: async (args, ctx) => {
       const arg = args.trim();
       if (arg === "on" || arg === "off") {
         cfg = { ...cfg, enabled: arg === "on" };

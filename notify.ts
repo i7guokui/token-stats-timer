@@ -28,6 +28,7 @@
 // 便于排查"没弹通知"是触发问题还是投递问题。
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { AutocompleteItem } from "@earendil-works/pi-tui";
 import { spawn, spawnSync } from "node:child_process";import {
   appendFileSync,
   existsSync,
@@ -269,6 +270,15 @@ export function createNotifier(pi: ExtensionAPI): void {
       "macOS 完成通知: on | off | status | test（详细配置见 notify-config.json）",
       "macOS completion notifications: on | off | status | test (see notify-config.json)",
     ),
+    getArgumentCompletions: (argumentPrefix: string): AutocompleteItem[] | null => {
+      if (typeof argumentPrefix !== "string") return null;
+      const prefix = argumentPrefix.trim().toLowerCase();
+      const values = ["on", "off", "status", "test"];
+      const matches = values
+        .filter((v) => v.startsWith(prefix))
+        .map((v) => ({ value: v, label: v }));
+      return matches.length > 0 ? matches : null;
+    },
     handler: async (args, ctx) => {
       const arg = args.trim();
       if (arg === "on") {

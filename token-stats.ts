@@ -14,8 +14,8 @@ import type {
   Theme,
 } from "@earendil-works/pi-coding-agent";
 import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
-import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { Markdown } from "@earendil-works/pi-tui";
+import type { AssistantMessage, TextContent } from "@earendil-works/pi-ai";
+import { Markdown, type AutocompleteItem } from "@earendil-works/pi-tui";
 import {
   appendFile,
   mkdir,
@@ -920,6 +920,69 @@ const DEFAULT_DISPLAY_CONFIG: DisplayConfig = {
 };
 
 // ── 模块入口 ─────────────────────────────────────────────
+
+/**
+ * 过滤命令补全候选（对齐 pi-cache-optimizer 的实现约定）：
+ * 应用补全时 pi 会用补全项整体替换当前 argumentPrefix，
+ * 因此嵌套建议必须带完整路径（如 "day 2026-08-30"）。
+ */
+function filterStatsCompletions(
+  values: readonly string[],
+  prefix: string,
+  argumentPath = "",
+): AutocompleteItem[] | null {
+  const normalizedPrefix = prefix.trim().toLowerCase();
+  const matches = values
+    .filter((value) => value.startsWith(normalizedPrefix))
+    .map((value) => ({
+      value: argumentPath ? `${argumentPath} ${value}` : value,
+      label: value,
+    }));
+  return matches.length > 0 ? matches : null;
+}
+
+/** 本地日期 YYYY-MM-DD（避开 UTC 时区偏移） */
+function localDateStr(offsetDays = 0): string {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** 本地月份 YYYY-MM */
+function localMonthStr(offsetMonths = 0): string {
+  const d = new Date();
+  d.setMonth(d.getMonth() + offsetMonths);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+const STATS_SUBCOMMANDS = ["day", "hour", "week", "month", "limit", "config"] as const;
+
+/** /stats 参数补全：day/hour 后给日期，month 后给月份，其余只到子命令 */
+function getStatsArgumentCompletions(argumentPrefix: string): AutocompleteItem[] | null {
+  if (typeof argumentPrefix !== "string") return null;
+  const trimmed = argumentPrefix.trim();
+  const parts = trimmed ? trimmed.split(/\s+/) : [];
+
+  if (parts.length === 0) {
+    return filterStatsCompletions(STATS_SUBCOMMANDS, "");
+  }
+  if (parts.length === 1) {
+    const sub = parts[0].toLowerCase();
+    if (sub === "day" || sub === "hour") {
+      // 提示日期：今天/昨天/前天
+      const dates = [localDateStr(0), localDateStr(-1), localDateStr(-2)];
+      return filterStatsCompletions(dates, "", sub);
+    }
+    if (sub === "month") {
+      const months = [localMonthStr(0), localMonthStr(-1)];
+      return filterStatsCompletions(months, "", sub);
+    }
+    return filterStatsCompletions(STATS_SUBCOMMANDS, parts[0]);
+  }
+  // 已选子命令且带了参数（day/hour 后接日期、month 后接月份）：不再建议
+  return null;
+}
 
 export interface TokenStatsHandle {
   /** footer 上行指标段（不含 run 计时；计时由 index.ts 拼接） */
@@ -1997,7 +2060,7 @@ export function createTokenStats(
 
   // ── message renderer: 渲染 /stats 发出的消息（markdown 表格）──
   pi.registerMessageRenderer("token-stats", (message, _options, theme) => {
-    return new Markdown(message.content, 0, 0, getMarkdownTheme(), {
+    return new Markdown(message.content as string, 0, 0, getMarkdownTheme(), {
       color: (text) => theme.fg("dim", text),
     });
   });
@@ -2228,6 +2291,7 @@ export function createTokenStats(
       "Token 统计 (day | hour | week | month | config | limit)  无参默认显示当天统计；limit 进入套餐配置",
       "Token stats (day | hour | week | month | config | limit)  No arg shows today; limit enters quota plan config",
     ),
+    getArgumentCompletions: getStatsArgumentCompletions,
     handler: async (args, ctx) => {
       const arg = args.trim();
 
