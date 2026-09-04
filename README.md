@@ -47,6 +47,30 @@ Footer 下行：cwd + git 分支 + 其他扩展状态。
 
 > 若同时安装原 `@tifan/pi-preferred-thinking`，其 session_start 自动应用会与本功能互相覆盖，建议二选一。
 
+## 按工作目录记忆上次切换的模型（model-memory）
+
+在新目录开启新会话时自动用该目录**最后一次手动切换的模型**，替代 pi 的全局默认模型（默认开启）：
+
+- 手动切换模型（`/model` 选择 / Ctrl+P 循环）→ 以当前 `cwd` 为 key 记录该模型
+- 新开会话（启动时空白会话 / `/new`）：若初始模型正是 pi 的全局默认模型，则自动切换到该目录记忆的模型
+- 若该目录没有记忆、记忆模型已失效/无鉴权，或初始模型是 `--model` / `--models` 显式指定（不是默认模型），则不干预，保持 pi 原行为
+- 恢复会话（`--continue` / `--resume` / 切换会话）不受影响：仍恢复会话自身最后使用的模型
+
+- `/auto-remember-model` —— 无参查看状态；`on` / `off` 启用或禁用（默认开启）；`forget` 清除当前目录记忆
+
+配置：`~/.pi/agent/extensions/token-stats/model-memory.json`
+
+```json
+{
+  "enabled": true,
+  "cwdModels": {
+    "/path/to/project": { "provider": "cmd", "modelId": "deepseek/deepseek-v4-pro", "at": 1725000000000 }
+  }
+}
+```
+
+> 与 thinking-memory 互补：切到记忆模型后，会照常应用该模型记忆的思考强度。
+
 ## macOS 完成通知
 
 每次 run（agent 任务）结束后弹系统通知，区分两种结果：
@@ -112,6 +136,7 @@ Footer 下行：cwd + git 分支 + 其他扩展状态。
 - `/stats config` —— 显示样式 / 显示内容 / 配额刷新时间 / GLM 团队凭证
 - `/notify [on|off|test]` —— 通知开关 / 测试（无参查看状态）
 - `/auto-remember-thinking-level [on|off]` —— 自动记忆思考强度开关（无参查看状态）
+- `/auto-remember-model [on|off|forget]` —— 按目录记忆上次切换的模型开关 / 清除当前目录记忆（无参查看状态）
 
 ## GLM 团队套餐（Team Plan）
 

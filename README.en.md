@@ -45,6 +45,30 @@ Config: `~/.pi/agent/extensions/token-stats/auto-remember-thinking-level.json`
 
 > If the original `@tifan/pi-preferred-thinking` is also installed, its session_start auto-apply overrides this feature and vice versa — install only one of them.
 
+## Per-directory last-model memory (model-memory)
+
+When you start a new session in a directory, pi uses the model you **last switched to manually in that directory** instead of pi's global default model (enabled by default):
+
+- Manually switching the model (`/model`, Ctrl+P cycle) records it keyed by the current `cwd`
+- On a new session (blank session at startup / `/new`): if the initial model is exactly pi's global default, it is switched to the directory's remembered model
+- If the directory has no memory, the remembered model is gone / has no auth, or the initial model was explicitly chosen via `--model` / `--models` (i.e. not the default), nothing is overridden — pi's original behavior stays
+- Resumed sessions (`--continue` / `--resume` / session switch) are untouched: they still restore the model the session itself last used
+
+- `/auto-remember-model` — no arg shows status; `on` / `off` enable or disable (enabled by default); `forget` clears the memory for the current directory
+
+Config: `~/.pi/agent/extensions/token-stats/model-memory.json`
+
+```json
+{
+  "enabled": true,
+  "cwdModels": {
+    "/path/to/project": { "provider": "cmd", "modelId": "deepseek/deepseek-v4-pro", "at": 1725000000000 }
+  }
+}
+```
+
+> Complements thinking-memory: after switching to the remembered model, its remembered thinking level is applied as usual.
+
 ## macOS completion notifications
 
 A system notification is posted when each run (agent task) finishes, distinguishing two outcomes:
@@ -110,6 +134,7 @@ No separate switch — always on with the package; timing semantics match the ru
 - `/stats config` — display style / display items / quota refresh interval / GLM team credentials
 - `/notify [on|off|test]` — notifications toggle / test (no arg shows status)
 - `/auto-remember-thinking-level [on|off]` — thinking-level memory toggle (no arg shows status)
+- `/auto-remember-model [on|off|forget]` — per-directory model memory toggle / clear current-directory memory (no arg shows status)
 
 ## GLM Team Plan
 

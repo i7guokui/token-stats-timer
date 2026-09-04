@@ -13,6 +13,7 @@
 //   notify.ts      —— macOS 完成通知（成功/失败/中止）
 //   step-timer.ts  —— 任务计时（Working 实时耗时 + 总耗时汇总）
 //   thinking-memory.ts —— 按模型自动记忆思考强度（手动切换时记录，默认开启）
+//   model-memory.ts    —— 按工作目录记忆最后一次手动切换的模型（新会话自动应用）
 //
 // 与两个原包的兼容性：
 //   - 配置沿用 ~/.pi/agent/extensions/token-stats/{config.json,display-config.json}
@@ -25,6 +26,7 @@ import { createTokenStats, formatUserPath, type SharedState } from "./token-stat
 import { createNotifier } from "./notify.ts";
 import { createStepTimer } from "./step-timer.ts";
 import { createThinkingMemory } from "./thinking-memory.ts";
+import { createModelMemory } from "./model-memory.ts";
 import { createUserLanguage } from "./user-language.ts";
 
 const shared: SharedState = {
@@ -44,6 +46,8 @@ export default function runTokenStatsExtension(pi: ExtensionAPI) {
   createStepTimer(pi, shared);
   // 按模型自动记忆思考强度（/auto-remember-thinking-level），默认开启
   createThinkingMemory(pi);
+  // 按工作目录记忆最后一次手动切换的模型（/auto-remember-model），默认开启
+  createModelMemory(pi);
 
   pi.on("session_start", (_event, ctx) => {
     shared.sessionActive = true;
