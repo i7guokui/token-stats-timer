@@ -3,7 +3,10 @@
 // 实时显示(仅交互 TUI):
 //   - 任务执行中:工作指示器文案显示 "Working... 01:02"(整体已耗时,每秒刷新)
 // 完成后汇总(appendEntry 持久化,不进入 LLM 上下文,resume 后可回看):
-//   - agent_settled  appendEntry("timing-final", …):仅本次任务总耗时
+//   - agent_settled  appendEntry("timing-final", …):
+//       第一行  完成时刻(24 小时制系统时间)
+//       第二行  总耗时 + 耗时分解:模型(assistant 流式,含思考)/ 工具 / 其他
+//       第三行  本次 run 的 token 指标(对齐 footer)
 //
 // 一次 run = 空闲后的首个 agent_start → agent_settled(与 run-timer 语义一致,
 // 包含重试、压缩恢复和排队的 steering/follow-up 提示)。
@@ -25,6 +28,11 @@ export interface FinalTimingData {
   endAt: number;
   /** 本次 run 的 token 汇总（对齐 footer 指标；无数据时 null） */
   runStats: RunTokenStats | null;
+  /** ---- 以下为 v1.3 新增的分解字段(旧条目可能缺失) ---- */
+  /** 模型耗时:assistant 消息流式(含思考)起止之和 */
+  llmMs: number;
+  /** 工具执行耗时(所有工具调用之和) */
+  toolMs: number;
 }
 
 const FINAL_TYPE = "timing-final";
@@ -56,12 +64,42 @@ export function createStepTimer(pi: ExtensionAPI, shared: SharedState): void {
   let runActive = false;
   let runStartMs = 0;
 
+  // ── run 内耗时分解累计(新 run 开始时重置) ──
+  let llmMs = 0;
+  /** 当前 assistant 消息流式开始时刻(0 = 无进行中的 assistant 消息) */
+  let streamStartMs = 0;
+  let toolMs = 0;
+  /** toolCallId → 开始时刻(进行中的工具调用) */
+  const runningTools = new Map<string, number>();
+
+  function resetBreakdown(): void {
+    llmMs = 0;
+    streamStartMs = 0;
+    toolMs = 0;
+    runningTools.clear();
+  }
+
+  /** 收尾:闭合所有未结束的计时(中止/异常时兜底),返回时不再有进行中的条目 */
+  function closeDangling(nowMs: number): void {
+    if (streamStartMs > 0) {
+      llmMs += Math.max(0, nowMs - streamStartMs);
+      streamStartMs = 0;
+    }
+    for (const [id, startMs] of runningTools) {
+      toolMs += Math.max(0, nowMs - startMs);
+      runningTools.delete(id);
+    }
+  }
+
+  // ── 工作指示器:仅整体已耗时 ──────────────────────
+  function updateWorkingMessage(): void {
+    if (!lastCtx?.hasUI || !runActive) return;
+    lastCtx.ui.setWorkingMessage(`Working... ${formatDuration(Date.now() - runStartMs)}`);
+  }
+
   function startTicker(): void {
     stopTicker();
-    tick = setInterval(() => {
-      if (!lastCtx?.hasUI || !runActive) return;
-      lastCtx.ui.setWorkingMessage(`Working... ${formatDuration(Date.now() - runStartMs)}`);
-    }, TICK_MS);
+    tick = setInterval(updateWorkingMessage, TICK_MS);
   }
 
   function stopTicker(): void {
@@ -72,10 +110,13 @@ export function createStepTimer(pi: ExtensionAPI, shared: SharedState): void {
 
   function appendFinal(): void {
     const endAt = Date.now();
+    closeDangling(endAt);
     pi.appendEntry<FinalTimingData>(FINAL_TYPE, {
       totalMs: endAt - runStartMs,
       endAt,
       runStats: shared.getRunStats?.() ?? null,
+      llmMs,
+      toolMs,
     });
   }
 
@@ -87,11 +128,41 @@ export function createStepTimer(pi: ExtensionAPI, shared: SharedState): void {
 
   pi.on("agent_start", (_event, ctx) => {
     lastCtx = ctx;
-    if (runActive) return;
+    if (runActive) return; // 重试/压缩恢复等:同属一次 run,继续累计
     runActive = true;
     runStartMs = Date.now();
+    resetBreakdown();
     startTicker();
     if (lastCtx?.hasUI) lastCtx.ui.setWorkingMessage("Working... 00:00");
+  });
+
+  // ── 模型耗时:assistant 消息流式(含思考)起止 ──
+  pi.on("message_start", (event, _ctx) => {
+    if (!runActive || event.message.role !== "assistant") return;
+    if (streamStartMs === 0) streamStartMs = Date.now();
+  });
+
+  pi.on("message_end", (event, _ctx) => {
+    if (!runActive || event.message.role !== "assistant") return;
+    if (streamStartMs > 0) {
+      llmMs += Math.max(0, Date.now() - streamStartMs);
+      streamStartMs = 0;
+    }
+  });
+
+  // ── 工具耗时:tool_execution_start → tool_execution_end ──
+  pi.on("tool_execution_start", (event, _ctx) => {
+    if (!runActive) return;
+    runningTools.set(event.toolCallId, Date.now());
+  });
+
+  pi.on("tool_execution_end", (event, _ctx) => {
+    if (!runActive) return;
+    const startMs = runningTools.get(event.toolCallId);
+    if (startMs !== undefined) {
+      runningTools.delete(event.toolCallId);
+      toolMs += Math.max(0, Date.now() - startMs);
+    }
   });
 
   pi.on("agent_settled", (_event, ctx) => {
@@ -121,22 +192,36 @@ export function createStepTimer(pi: ExtensionAPI, shared: SharedState): void {
     // 第一行：完成时刻（24 小时制系统时间）独占一行，最醒目
     const lines = [`[${formatSystemTime(d.endAt ?? Date.now())}]`];
 
-    // 第二行：总耗时 + 本次 run 的 token 指标（对齐 footer 风格）
+    // 第二行：总耗时 + 耗时分解（分解字段 v1.3+ 才有；旧条目仅总耗时）
+    const dim = (x: string) => theme.fg("dim", x);
     const seg: string[] = [];
     seg.push(`${title}：${formatDuration(d.totalMs)}`);
-    const s = d.runStats;
-    if (s && s.hasData) {
-      const dim = (x: string) => theme.fg("dim", x);
-      const ok = (x: string) => theme.fg("success", x);
-      const warn = (x: string) => theme.fg("warning", x);
-      seg.push(`↑${formatTokens(s.input)}`);
-      seg.push(`↓${formatTokens(s.output)}`);
-      seg.push(`Σ${formatTokens(s.input + s.output)}`);
-      const chColor = s.cacheHitRate >= 80 ? ok : s.cacheHitRate >= 50 ? (x: string) => x : warn;
-      seg.push(`${dim("CH")}${chColor(`${s.cacheHitRate.toFixed(1)}%`)}`);
-      seg.push(`⚡${ok(formatTokenSpeed(s.tokensPerSec))} t/s`);
+    if (typeof d.llmMs === "number" && typeof d.toolMs === "number") {
+      const otherMs = Math.max(0, d.totalMs - d.llmMs - d.toolMs);
+      const detail = [
+        `${dim(t("模型", "LLM"))} ${formatDuration(d.llmMs)}`,
+        `${dim(t("工具", "tools"))} ${formatDuration(d.toolMs)}`,
+        `${dim(t("其他", "other"))} ${formatDuration(otherMs)}`,
+      ];
+      seg.push(detail.join(dim(" · ")));
     }
     lines.push(seg.join("  "));
+
+    // 第三行：本次 run 的 token 指标（对齐 footer 风格；无数据时省略）
+    const s = d.runStats;
+    if (s && s.hasData) {
+      const ok = (x: string) => theme.fg("success", x);
+      const warn = (x: string) => theme.fg("warning", x);
+      const tokenSeg = [
+        `↑${formatTokens(s.input)}`,
+        `↓${formatTokens(s.output)}`,
+        `Σ${formatTokens(s.input + s.output)}`,
+      ];
+      const chColor = s.cacheHitRate >= 80 ? ok : s.cacheHitRate >= 50 ? (x: string) => x : warn;
+      tokenSeg.push(`${dim("CH")}${chColor(`${s.cacheHitRate.toFixed(1)}%`)}`);
+      tokenSeg.push(`⚡${ok(formatTokenSpeed(s.tokensPerSec))} t/s`);
+      lines.push(tokenSeg.join("  "));
+    }
 
     const box = new Box(1, 1, (text) => theme.bg("customMessageBg", text));
     box.addChild(new Text(lines.join("\n"), 0, 0));

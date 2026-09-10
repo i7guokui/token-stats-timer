@@ -115,14 +115,15 @@ Config file: `~/.pi/agent/extensions/token-stats/notify-config.json` (defaults a
 ## Run timing (step-timer)
 
 - While working: the spinner text shows `Working... 01:02` (elapsed time, refreshed every second)
-- On completion: an entry is appended at the end of the session — the completion time (24h system time) on its own first line, followed by the total duration and this run's token metrics (input/output/total, cache hit rate, avg speed — footer style):
+- On completion: an entry is appended at the end of the session — the completion time (24h system time) on its own first line, followed by the total duration with a time breakdown (LLM streaming [incl. thinking] / tools / other), then this run's token metrics (input/output/total, cache hit rate, avg speed — footer style):
 
   ```
   [2026-08-26 10:20:12]
-  Total time: 01:23  ↑1.2k ↓345 Σ1.5k CH80% ⚡12.3 t/s
+  Total time: 01:23  LLM 00:45 · tools 00:30 · other 00:08
+  ↑1.2k ↓345 Σ1.5k CH80% ⚡12.3 t/s
   ```
 
-  Persisted via `appendEntry`, kept out of the LLM context, and still visible after `/resume`.
+  Persisted via `appendEntry`, kept out of the LLM context, and still visible after `/resume`; entries created before the upgrade only show the first two lines without the breakdown.
 
 No separate switch — always on with the package; timing semantics match the run timer (one run = first `agent_start` → `agent_settled`, including retries, compaction recovery and queued prompts).
 
