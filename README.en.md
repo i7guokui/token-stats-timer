@@ -115,13 +115,15 @@ Config file: `~/.pi/agent/extensions/token-stats/notify-config.json` (defaults a
 ## Run timing (step-timer)
 
 - While working: the spinner text shows `Working... 01:02` (elapsed time, refreshed every second)
-- On completion: an entry is appended at the end of the session — the completion time (24h system time) on its own first line, followed by the total duration with a time breakdown (LLM streaming [incl. thinking] / tools / other), then this run's token metrics (input/output/total, cache hit rate, avg speed — footer style):
+- On completion: an entry is appended at the end of the session — the completion time (24h system time) on its own first line, followed by the total duration with a time breakdown (LLM streaming [incl. thinking], immediately followed by this run's average time-to-first-token; then tools / other), then this run's token metrics (input/output/total, cache hit rate, avg speed — footer style):
 
   ```
   [2026-08-26 10:20:12]
-  Total time: 01:23  LLM 00:45 · tools 00:30 · other 00:08
+  Total time: 01:23  LLM 00:45 TTFT 1.2s · tools 00:30 · other 00:08
   ↑1.2k ↓345 Σ1.5k CH80% ⚡12.3 t/s
   ```
+
+  TTFT is an **average**: per turn, from `turn_start` to the first streaming event (text/thinking/toolcall), averaged over the run; the field is omitted when there is no sample (e.g. immediate error / no output). Values under one minute keep one decimal (e.g. `1.2s`).
 
   Persisted via `appendEntry`, kept out of the LLM context, and still visible after `/resume`; entries created before the upgrade only show the first two lines without the breakdown.
 
