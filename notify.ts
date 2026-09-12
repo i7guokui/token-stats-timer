@@ -5,7 +5,7 @@
 // run 语义与 run-timer 一致：从空闲后的第一个 agent_start 到 agent_settled
 // 的连续忙碌期（含重试、压缩恢复、排队提示）。
 //
-// 配置持久化：~/.pi/agent/extensions/token-stats/notify-config.json
+// 配置持久化：统一配置文件 config.json 的 notify section（见 config.ts）
 //   enabled       总开关（默认 true）
 //   minDurationSec 时长低于该秒数的 run 不通知（默认 0 = 每次都通知）
 //   sound         通知声音（默认 "Glass"，"" 表示静音）
@@ -29,19 +29,13 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { AutocompleteItem } from "@earendil-works/pi-tui";
-import { spawn, spawnSync } from "node:child_process";import {
+import { spawn, spawnSync } from "node:child_process";
+import {
   appendFileSync,
   existsSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import { t } from "./user-language.ts";
-
-const CONFIG_DIR = join(homedir(), ".pi/agent/extensions/token-stats");
-const CONFIG_FILE = join(CONFIG_DIR, "notify-config.json");
+import { getSection, saveSection } from "./config.ts";
 
 /** 支持 OSC 777 终端协议的应用（按 TERM_PROGRAM 匹配） */
 const OSC777_TERMINALS = new Set([
@@ -73,18 +67,12 @@ const DEFAULT_CONFIG: NotifyConfig = {
 };
 
 function loadConfig(): NotifyConfig {
-  if (!existsSync(CONFIG_FILE)) return { ...DEFAULT_CONFIG };
-  try {
-    const saved = JSON.parse(readFileSync(CONFIG_FILE, "utf-8")) as Partial<NotifyConfig>;
-    return { ...DEFAULT_CONFIG, ...saved };
-  } catch {
-    return { ...DEFAULT_CONFIG };
-  }
+  const saved = getSection<Partial<NotifyConfig>>("notify");
+  return { ...DEFAULT_CONFIG, ...(saved ?? {}) };
 }
 
 function saveConfig(cfg: NotifyConfig): void {
-  mkdirSync(CONFIG_DIR, { recursive: true });
-  writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2) + "\n", "utf-8");
+  saveSection("notify", cfg);
 }
 
 /** 连续两次通知的最短间隔（毫秒），防止并行 agent 结束时刷屏 */
@@ -267,8 +255,8 @@ export function createNotifier(pi: ExtensionAPI): void {
   // ── /notify 命令 ─────────────────────────────────────
   pi.registerCommand("notify", {
     description: t(
-      "macOS 完成通知: on | off | status | test（详细配置见 notify-config.json）",
-      "macOS completion notifications: on | off | status | test (see notify-config.json)",
+      "macOS 完成通知: on | off | status | test（详细配置见 config.json 的 notify 段）",
+      "macOS completion notifications: on | off | status | test (see the notify section in config.json)",
     ),
     getArgumentCompletions: (argumentPrefix: string): AutocompleteItem[] | null => {
       if (typeof argumentPrefix !== "string") return null;

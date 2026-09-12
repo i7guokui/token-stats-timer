@@ -5,26 +5,18 @@
 //   - session_start / model_select 时自动应用该模型记忆的级别
 //   - 扩展自身 setThinkingLevel 与模型切换引起的级别变化不会被误记录
 //
-// 配置：~/.pi/agent/extensions/token-stats/auto-remember-thinking-level.json
-//   {
-//     "enabled": true,
-//     "levels": { "opencode-go/deepseek-v4-flash": "max" }
-//   }
+// 配置：统一配置文件 config.json 的 thinking section（见 config.ts）
+//   { "thinking": { "enabled": true, "levels": { "model-key": "max" } } }
 //
 // 参考 @tifan/pi-preferred-thinking（手动设置命令）改为自动记忆模式：不提供
 // 单独设置命令，以用户的实际切换行为作为记忆来源。
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AutocompleteItem } from "@earendil-works/pi-tui";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import { t } from "./user-language.ts";
+import { getSection, saveSection } from "./config.ts";
 
 type ThinkingLevel = Parameters<ExtensionAPI["setThinkingLevel"]>[0];
-
-const CONFIG_DIR = join(homedir(), ".pi/agent/extensions/token-stats");
-const CONFIG_FILE = join(CONFIG_DIR, "auto-remember-thinking-level.json");
 
 const VALID_LEVELS = new Set<ThinkingLevel>([
   "off",
@@ -50,9 +42,8 @@ const APPLY_WINDOW_MS = 100;
 
 function loadConfig(): ThinkingMemoryConfig {
   try {
-    if (!existsSync(CONFIG_FILE)) return { ...DEFAULT_CONFIG, levels: {} };
-    const raw = JSON.parse(readFileSync(CONFIG_FILE, "utf-8")) as unknown;
-    const cfg = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
+    const cfg = getSection<Record<string, unknown>>("thinking");
+    if (!cfg) return { ...DEFAULT_CONFIG, levels: {} };
     const levels: Record<string, ThinkingLevel> = {};
     const configured = cfg.levels;
     if (configured && typeof configured === "object" && !Array.isArray(configured)) {
@@ -69,8 +60,7 @@ function loadConfig(): ThinkingMemoryConfig {
 }
 
 function saveConfig(cfg: ThinkingMemoryConfig): void {
-  mkdirSync(CONFIG_DIR, { recursive: true });
-  writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2) + "\n", "utf-8");
+  saveSection("thinking", cfg);
 }
 
 export function createThinkingMemory(pi: ExtensionAPI): void {

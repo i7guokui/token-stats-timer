@@ -34,13 +34,13 @@ Footer 下行：cwd + git 分支 + 其他扩展状态。
 
 - `/auto-remember-thinking-level` —— 无参查看状态；`on` / `off` 启用或禁用（默认开启）
 
-配置：`~/.pi/agent/extensions/token-stats/auto-remember-thinking-level.json`
+配置：统一配置文件 `config.json` 的 `thinking` 段（见 [配置文件](#配置文件)）
 
 ```json
 {
-  "enabled": true,
-  "levels": {
-    "opencode-go/deepseek-v4-flash": "max"
+  "thinking": {
+    "enabled": true,
+    "levels": { "opencode-go/deepseek-v4-flash": "max" }
   }
 }
 ```
@@ -58,13 +58,15 @@ Footer 下行：cwd + git 分支 + 其他扩展状态。
 
 - `/auto-remember-model` —— 无参查看状态；`on` / `off` 启用或禁用（默认开启）；`forget` 清除当前目录记忆
 
-配置：`~/.pi/agent/extensions/token-stats/model-memory.json`
+配置：统一配置文件 `config.json` 的 `model` 段（见 [配置文件](#配置文件)）
 
 ```json
 {
-  "enabled": true,
-  "cwdModels": {
-    "/path/to/project": { "provider": "cmd", "modelId": "deepseek/deepseek-v4-pro", "at": 1725000000000 }
+  "model": {
+    "enabled": true,
+    "cwdModels": {
+      "/path/to/project": { "provider": "cmd", "modelId": "deepseek/deepseek-v4-pro", "at": 1725000000000 }
+    }
   }
 }
 ```
@@ -93,17 +95,18 @@ Footer 下行：cwd + git 分支 + 其他扩展状态。
 
 ### 配置
 
-配置文件：`~/.pi/agent/extensions/token-stats/notify-config.json`（不存在时用默认值）
+配置：统一配置文件 `config.json` 的 `notify` 段（见 [配置文件](#配置文件)）
 
 ```json
 {
-  "enabled": true,
-  "minDurationSec": 0,
-  "sound": "Glass",
-  "onSuccess": true,
-  "onFailure": true,
-  "onAbort": true,
-  "onSessionEnd": true
+  "notify": {
+    "enabled": true,
+    "minDurationSec": 0,
+    "sound": "Glass",
+    "onSuccess": true,
+    "onAbort": false,
+    "onSessionEnd": false
+  }
 }
 ```
 
@@ -141,6 +144,38 @@ Footer 下行：cwd + git 分支 + 其他扩展状态。
 - `/auto-remember-thinking-level [on|off]` —— 自动记忆思考强度开关（无参查看状态）
 - `/auto-remember-model [on|off|forget]` —— 按目录记忆上次切换的模型开关 / 清除当前目录记忆（无参查看状态）
 
+## 配置文件
+
+所有配置统一在**一个文件**里：
+
+```
+~/.pi/agent/extensions/token-stats/config.json
+```
+
+每个模块占一个 section，互不干扰：
+
+```json
+{
+  "token":    { "providerPlans": { "glm": "glm" }, "ttl": 60, "teamCredential": { "organization": "...", "project": "..." } },
+  "display":  { "items": { "input": true, "speed": true }, "contextStyle": "bar", "speedStyle": "t/s" },
+  "notify":   { "enabled": true, "minDurationSec": 0, "sound": "Glass" },
+  "thinking": { "enabled": true, "levels": { "cmd/deepseek/deepseek-v4-flash": "max" } },
+  "model":    { "enabled": true, "cwdModels": { "/path/to/project": { "provider": "cmd", "modelId": "...", "at": 0 } } }
+}
+```
+
+| section | 对应模块 | 内容 |
+| --- | --- | --- |
+| `token` | token-stats | 套餐选择、GLM 团队凭证、配额刷新间隔 |
+| `display` | token-stats | 状态栏显示项与样式 |
+| `notify` | notify | 完成通知开关与声音 |
+| `thinking` | thinking-memory | 每个模型记忆的思考强度 |
+| `model` | model-memory | 每个工作目录记忆的模型 |
+
+模块间共享同一份内存副本、按 section 写入，因此某个模块保存配置不会覆盖其他模块的设置。
+
+> **从旧版本升级**：首次启动会自动把旧的散装文件（`display-config.json` / `notify-config.json` / `auto-remember-thinking-level.json` / `model-memory.json`）合并进 `config.json`，并逐个重命名为 `*.bak` 保留（旧 `config.json` 会另存为 `config.json.bak`）。确认无误后可自行删除这些备份。
+
 ## GLM 团队套餐（Team Plan）
 
 个人版与团队版共用 `GET /api/monitor/usage/quota/limit`，区别在请求头：团队版需额外携带 `Bigmodel-Organization` / `Bigmodel-Project` 两个请求头并加 `?type=2`（api_key + 组织 ID + 项目 ID 三者缺一不可，仅国内站 `open.bigmodel.cn` 有团队档）。
@@ -149,13 +184,15 @@ Footer 下行：cwd + git 分支 + 其他扩展状态。
 
 - 启用 GLM 套餐后（`/stats limit` 选 GLM）会自动弹出团队凭证配置询问，可「✏️ 配置/修改」或「跳过」
 - 随时可通过 `/stats config` → 「GLM 团队凭证」修改或清除
-- 凭证保存在 `~/.pi/agent/extensions/token-stats/config.json` 的 `teamCredential` 字段：
+- 凭证保存在统一配置文件 `config.json` 的 `token.teamCredential` 字段：
 
 ```json
 {
-  "providerPlans": { "zai-coding-cn": "glm" },
-  "teamCredential": { "organization": "your-org-id", "project": "your-project-id" },
-  "ttl": 60
+  "token": {
+    "providerPlans": { "zai-coding-cn": "glm" },
+    "teamCredential": { "organization": "your-org-id", "project": "your-project-id" },
+    "ttl": 60
+  }
 }
 ```
 

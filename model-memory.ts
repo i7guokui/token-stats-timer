@@ -13,7 +13,7 @@
 // 与 thinking-memory（按模型记思考强度）互不冲突：本模块只切模型，切模型
 // 触发的 model_select 会照常让 thinking-memory 应用目标模型的思考强度。
 //
-// 配置：~/.pi/agent/extensions/token-stats/model-memory.json
+// 配置：统一配置文件 config.json 的 model section（见 config.ts）
 //   {
 //     "enabled": true,
 //     "cwdModels": {
@@ -23,10 +23,11 @@
 
 import type { ExtensionAPI, ExtensionContext, SessionStartEvent } from "@earendil-works/pi-coding-agent";
 import type { AutocompleteItem } from "@earendil-works/pi-tui";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { t } from "./user-language.ts";
+import { getSection, saveSection } from "./config.ts";
 
 /** 事件型 vs 存储型 key：模型统一用 `${provider}/${modelId}` 字符串 */
 interface CwdModelMemory {
@@ -47,9 +48,6 @@ interface EffectiveDefaultModel {
   modelId: string;
 }
 
-const EXTENSION_DIR = join(homedir(), ".pi/agent/extensions/token-stats");
-const CONFIG_FILE = join(EXTENSION_DIR, "model-memory.json");
-
 const DEFAULT_CONFIG: ModelMemoryConfig = { enabled: true, cwdModels: {} };
 
 /** 归一化 cwd（绝对化 + 去尾部斜杠），保证记录/读取 key 一致 */
@@ -65,9 +63,8 @@ const FRESH_SESSION_REASONS = new Set<string>(["startup", "new"]);
 // ---------------------------------------------------------------------------
 function loadConfig(): ModelMemoryConfig {
   try {
-    if (!existsSync(CONFIG_FILE)) return { ...DEFAULT_CONFIG, cwdModels: {} };
-    const raw = JSON.parse(readFileSync(CONFIG_FILE, "utf-8")) as unknown;
-    const cfg = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+    const cfg = getSection<Record<string, unknown>>("model");
+    if (!cfg) return { ...DEFAULT_CONFIG, cwdModels: {} };
     const cwdModels: Record<string, CwdModelMemory> = {};
     const stored = cfg.cwdModels;
     if (stored && typeof stored === "object" && !Array.isArray(stored)) {
@@ -94,8 +91,7 @@ function loadConfig(): ModelMemoryConfig {
 }
 
 function saveConfig(cfg: ModelMemoryConfig): void {
-  mkdirSync(EXTENSION_DIR, { recursive: true });
-  writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2) + "\n", "utf-8");
+  saveSection("model", cfg);
 }
 
 // ---------------------------------------------------------------------------

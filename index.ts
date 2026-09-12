@@ -16,7 +16,8 @@
 //   model-memory.ts    —— 按工作目录记忆最后一次手动切换的模型（新会话自动应用）
 //
 // 与两个原包的兼容性：
-//   - 配置沿用 ~/.pi/agent/extensions/token-stats/{config.json,display-config.json}
+//   - 配置统一到 ~/.pi/agent/extensions/token-stats/config.json（按 section 存放：
+//     token / display / notify / thinking / model，见 config.ts）
 //   - 日志沿用 ~/.pi/agent/extensions/token-stats-logs/
 //   - 计时状态沿用 session 内 "run-timer-state" 自定义条目
 
@@ -35,12 +36,13 @@ const shared: SharedState = {
 };
 
 export default function runTokenStatsExtension(pi: ExtensionAPI) {
-  const stats = createTokenStats(pi, shared);
-
-  // 语言判断最先初始化：其他模块的文案随用户语言切换（直接读环境变量）
+  // 语言判断最先初始化：以下所有模块的文案（含命令 description，注册时即求值）
+  // 都依赖当前语言，必须放在其他 create* 之前
   createUserLanguage();
 
-  // macOS 完成通知（成功/失败/中止），配置见 notify-config.json
+  const stats = createTokenStats(pi, shared);
+
+  // macOS 完成通知（成功/失败/中止），配置见统一 config.json 的 notify section
   createNotifier(pi);
   // 每步耗时：Thinking.../Working... 实时耗时 + 每 turn/总耗时会话摘要
   createStepTimer(pi, shared);

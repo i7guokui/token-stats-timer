@@ -27,6 +27,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { existsSync, readFileSync } from "node:fs";
 import { t } from "./user-language.ts";
+import { getSection, saveSection } from "./config.ts";
 
 // ── 共享状态（由 index.ts 注入，footer 渲染与模块解耦）──
 
@@ -61,10 +62,7 @@ const RAW_DIR = join(LOGS_DIR, "raw");
 const HOURLY_DIR = join(LOGS_DIR, "hourly");
 const DAILY_FILE = join(LOGS_DIR, "daily", "daily.jsonl");
 
-const TOKEN_CONFIG_DIR = join(homedir(), ".pi/agent/extensions/token-stats");
-const TOKEN_CONFIG_FILE = join(TOKEN_CONFIG_DIR, "config.json");
 const QUOTA_CACHE_FILE = join(LOGS_DIR, "quota-cache.json");
-const DISPLAY_CONFIG_FILE = join(TOKEN_CONFIG_DIR, "display-config.json");
 
 // ── 常量 ──────────────────────────────────────────────────
 
@@ -1470,19 +1468,19 @@ export function createTokenStats(
 
   // ── 配置文件操作 ─────────────────────────────────────
 
+  // 存储委托给 config.ts 的统一配置文件（按 section 读写）
   async function loadTokenConfig(): Promise<TokenConfig> {
-    try {
-      if (existsSync(TOKEN_CONFIG_FILE)) {
-        const raw = await readFile(TOKEN_CONFIG_FILE, "utf-8");
-        return { ...DEFAULT_TOKEN_CONFIG, ...JSON.parse(raw) };
-      }
-    } catch {}
-    return { ...DEFAULT_TOKEN_CONFIG };
+    const saved = getSection<Partial<TokenConfig>>("token");
+    if (!saved) return { ...DEFAULT_TOKEN_CONFIG };
+    return {
+      ...DEFAULT_TOKEN_CONFIG,
+      ...saved,
+      providerPlans: { ...(saved.providerPlans ?? {}) },
+    };
   }
 
   async function saveTokenConfig(cfg: TokenConfig) {
-    await mkdir(TOKEN_CONFIG_DIR, { recursive: true });
-    await writeFile(TOKEN_CONFIG_FILE, JSON.stringify(cfg, null, 2), "utf-8");
+    saveSection("token", cfg);
   }
 
   function isContextStyle(v: unknown): v is ContextStyle {
@@ -1493,31 +1491,24 @@ export function createTokenStats(
   }
 
   async function loadDisplayConfig(): Promise<DisplayConfig> {
-    try {
-      if (existsSync(DISPLAY_CONFIG_FILE)) {
-        const raw = await readFile(DISPLAY_CONFIG_FILE, "utf-8");
-        const saved = JSON.parse(raw) as DisplayConfig;
-        // 与默认值合并，防止新增条目缺失
-        const merged: DisplayConfig = {
-          ...DEFAULT_DISPLAY_CONFIG,
-          items: { ...DEFAULT_DISPLAY_CONFIG.items },
-        };
-        if (saved.items) {
-          for (const key of Object.keys(merged.items) as DisplayKey[]) {
-            if (typeof saved.items[key] === "boolean") merged.items[key] = saved.items[key];
-          }
-        }
-        if (isContextStyle(saved.contextStyle)) merged.contextStyle = saved.contextStyle;
-        if (isSpeedStyle(saved.speedStyle)) merged.speedStyle = saved.speedStyle;
-        return merged;
+    const saved = getSection<DisplayConfig>("display");
+    // 与默认值合并，防止新增条目缺失
+    const merged: DisplayConfig = {
+      ...DEFAULT_DISPLAY_CONFIG,
+      items: { ...DEFAULT_DISPLAY_CONFIG.items },
+    };
+    if (saved?.items) {
+      for (const key of Object.keys(merged.items) as DisplayKey[]) {
+        if (typeof saved.items[key] === "boolean") merged.items[key] = saved.items[key];
       }
-    } catch {}
-    return { ...DEFAULT_DISPLAY_CONFIG, items: { ...DEFAULT_DISPLAY_CONFIG.items } };
+    }
+    if (isContextStyle(saved?.contextStyle)) merged.contextStyle = saved.contextStyle;
+    if (isSpeedStyle(saved?.speedStyle)) merged.speedStyle = saved.speedStyle;
+    return merged;
   }
 
   async function saveDisplayConfig(cfg: DisplayConfig) {
-    await mkdir(TOKEN_CONFIG_DIR, { recursive: true });
-    await writeFile(DISPLAY_CONFIG_FILE, JSON.stringify(cfg, null, 2), "utf-8");
+    saveSection("display", cfg);
   }
 
   // ── 缓存操作 ─────────────────────────────────────────

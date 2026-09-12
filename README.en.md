@@ -32,13 +32,13 @@ No manual setup command: when you **manually switch the thinking level, it is re
 
 - `/auto-remember-thinking-level` — no arg shows status; `on` / `off` enable or disable (enabled by default)
 
-Config: `~/.pi/agent/extensions/token-stats/auto-remember-thinking-level.json`
+Config: the `thinking` section of the unified `config.json` (see [Configuration file](#configuration-file))
 
 ```json
 {
-  "enabled": true,
-  "levels": {
-    "opencode-go/deepseek-v4-flash": "max"
+  "thinking": {
+    "enabled": true,
+    "levels": { "opencode-go/deepseek-v4-flash": "max" }
   }
 }
 ```
@@ -56,13 +56,15 @@ When you start a new session in a directory, pi uses the model you **last switch
 
 - `/auto-remember-model` — no arg shows status; `on` / `off` enable or disable (enabled by default); `forget` clears the memory for the current directory
 
-Config: `~/.pi/agent/extensions/token-stats/model-memory.json`
+Config: the `model` section of the unified `config.json` (see [Configuration file](#configuration-file))
 
 ```json
 {
-  "enabled": true,
-  "cwdModels": {
-    "/path/to/project": { "provider": "cmd", "modelId": "deepseek/deepseek-v4-pro", "at": 1725000000000 }
+  "model": {
+    "enabled": true,
+    "cwdModels": {
+      "/path/to/project": { "provider": "cmd", "modelId": "deepseek/deepseek-v4-pro", "at": 1725000000000 }
+    }
   }
 }
 ```
@@ -91,17 +93,18 @@ A separate 👋 notification on session close (optional).
 
 ### Configuration
 
-Config file: `~/.pi/agent/extensions/token-stats/notify-config.json` (defaults apply if missing)
+Config: the `notify` section of the unified `config.json` (see [Configuration file](#configuration-file))
 
 ```json
 {
-  "enabled": true,
-  "minDurationSec": 0,
-  "sound": "Glass",
-  "onSuccess": true,
-  "onFailure": true,
-  "onAbort": true,
-  "onSessionEnd": true
+  "notify": {
+    "enabled": true,
+    "minDurationSec": 0,
+    "sound": "Glass",
+    "onSuccess": true,
+    "onAbort": false,
+    "onSessionEnd": false
+  }
 }
 ```
 
@@ -139,6 +142,38 @@ No separate switch — always on with the package; timing semantics match the ru
 - `/auto-remember-thinking-level [on|off]` — thinking-level memory toggle (no arg shows status)
 - `/auto-remember-model [on|off|forget]` — per-directory model memory toggle / clear current-directory memory (no arg shows status)
 
+## Configuration file
+
+All configuration lives in **one file**:
+
+```
+~/.pi/agent/extensions/token-stats/config.json
+```
+
+Each module owns one section, so they never interfere with each other:
+
+```json
+{
+  "token":    { "providerPlans": { "glm": "glm" }, "ttl": 60, "teamCredential": { "organization": "...", "project": "..." } },
+  "display":  { "items": { "input": true, "speed": true }, "contextStyle": "bar", "speedStyle": "t/s" },
+  "notify":   { "enabled": true, "minDurationSec": 0, "sound": "Glass" },
+  "thinking": { "enabled": true, "levels": { "cmd/deepseek/deepseek-v4-flash": "max" } },
+  "model":    { "enabled": true, "cwdModels": { "/path/to/project": { "provider": "cmd", "modelId": "...", "at": 0 } } }
+}
+```
+
+| section | Module | Contents |
+| --- | --- | --- |
+| `token` | token-stats | quota plan, GLM team credentials, refresh interval |
+| `display` | token-stats | status bar items and styles |
+| `notify` | notify | completion notification switches and sound |
+| `thinking` | thinking-memory | remembered thinking level per model |
+| `model` | model-memory | remembered model per working directory |
+
+Modules share a single in-memory copy and write per section, so saving from one module never clobbers another module's settings.
+
+> **Upgrading from an older version**: on first start, the old separate files (`display-config.json` / `notify-config.json` / `auto-remember-thinking-level.json` / `model-memory.json`) are merged into `config.json` and renamed to `*.bak` (the old `config.json` is preserved as `config.json.bak`). Delete those backups once you're satisfied.
+
 ## GLM Team Plan
 
 Personal and team plans share `GET /api/monitor/usage/quota/limit`; the only difference is the request headers — the team plan requires the `Bigmodel-Organization` / `Bigmodel-Project` headers plus `?type=2` (api_key + organization ID + project ID, all three required; the team tier only exists on the China endpoint `open.bigmodel.cn`).
@@ -147,13 +182,15 @@ This plugin uses the team query **only when both the organization ID and the pro
 
 - After enabling the GLM plan (`/stats limit` → GLM), a team-credential prompt appears automatically — "✏️ Configure / Edit" or "Skip"
 - Change or clear it any time via `/stats config` → "GLM team credentials"
-- Credentials are stored in the `teamCredential` field of `~/.pi/agent/extensions/token-stats/config.json`:
+- Credentials are stored in the `token.teamCredential` field of the unified `config.json`:
 
 ```json
 {
-  "providerPlans": { "zai-coding-cn": "glm" },
-  "teamCredential": { "organization": "your-org-id", "project": "your-project-id" },
-  "ttl": 60
+  "token": {
+    "providerPlans": { "zai-coding-cn": "glm" },
+    "teamCredential": { "organization": "your-org-id", "project": "your-project-id" },
+    "ttl": 60
+  }
 }
 ```
 

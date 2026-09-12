@@ -1,6 +1,6 @@
 {
   "name": "token-stats-timer",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "pi extension to display token usage and time spend. Persist preferred thinking level per model in pi",
   "keywords": [
     "pi-package",
@@ -12,6 +12,7 @@
   "main": "index.ts",
   "files": [
     "index.ts",
+    "config.ts",
     "run-timer.ts",
     "token-stats.ts",
     "notify.ts",
@@ -43,7 +44,7 @@
   "devEngines": {
     "packageManager": {
       "name": "pnpm",
-      "version": "11.23.0",
+      "version": "12.4.1",
       "onFail": "ignore"
     }
   }
