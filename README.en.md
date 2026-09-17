@@ -15,10 +15,11 @@ Footer, top line (left-aligned):
 ```
 
 - `prev` / `max` —— duration of the previous run / longest run in this session branch (with a 15-char prompt preview)
-- `↑ ↓ Σ CH` —— cumulative input / output / total / cache hit rate
+- `↑ ↓ Σ CH` —— cumulative input / output / total (new input + cache read + cache write + output) / cache hit rate
 - `⚡` —— live speed (2s rolling window; falls back to the average speed while idle)
 - Context usage (style configurable)
 - `5h: W: ⏱` —— quota remaining (built-in plans for MiniMax / GLM / Kimi / DeepSeek / OpenCode Go / Command Code; enable per provider in `/stats`)
+  - DeepSeek is balance-based (`¥12.3`, not a 5h/W percentage), so it is rendered as a whole and bypasses the sub-item toggles above
 
 Footer, bottom line: cwd + git branch + statuses from other extensions.
 
@@ -123,7 +124,7 @@ Config: the `notify` section of the unified `config.json` (see [Configuration fi
   ```
   [2026-08-26 10:20:12]
   Total time: 01:23  LLM 00:45 TTFT 1.2s · tools 00:30 · other 00:08
-  ↑1.2k ↓345 Σ1.5k CH80% ⚡12.3 t/s
+  ↑1.2k ↓345 Σ52.5k CH80% ⚡12.3 t/s
   ```
 
   TTFT is an **average**: per turn, from `turn_start` to the first streaming event (text/thinking/toolcall), averaged over the run; the field is omitted when there is no sample (e.g. immediate error / no output). Values under one minute keep one decimal (e.g. `1.2s`).

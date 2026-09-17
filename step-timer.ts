@@ -258,7 +258,8 @@ export function createStepTimer(pi: ExtensionAPI, shared: SharedState): void {
       const tokenSeg = [
         `↑${formatTokens(s.input)}`,
         `↓${formatTokens(s.output)}`,
-        `Σ${formatTokens(s.input + s.output)}`,
+        // 总token：真实全量消耗（与 footer 的 Σ 同口径）
+        `Σ${formatTokens(s.input + s.cacheRead + s.cacheWrite + s.output)}`,
       ];
       const chColor = s.cacheHitRate >= 80 ? ok : s.cacheHitRate >= 50 ? (x: string) => x : warn;
       tokenSeg.push(`${dim("CH")}${chColor(`${s.cacheHitRate.toFixed(1)}%`)}`);

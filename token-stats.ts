@@ -138,7 +138,11 @@ interface TokenPlan {
   quotaPath: string;
   authHeader: (key: string) => Record<string, string>;
   fetchQuota: (plan: TokenPlan, key: string, extra?: QuotaFetchExtra) => Promise<any>;
-  format: (data: any) => { modelPrefix: string; display: string; color: 'ok' | 'warn' | 'err' };
+  /**
+   * rawDisplay=true 表示 display 不是 "5h/W/M/⏱" 百分比子项格式（如 DeepSeek 余额金额），
+   * 状态栏不做子项过滤，整体原样显示。
+   */
+  format: (data: any) => { modelPrefix: string; display: string; color: 'ok' | 'warn' | 'err'; rawDisplay?: boolean };
 }
 
 interface TokenConfig {
@@ -162,7 +166,7 @@ export type SpeedStyle = "t/s" | "tok/s" | "T/s" | "liveAt";
 export type DisplayKey =
   | "input"       // 输入（累计输入数 ↑）
   | "output"      // 输出（累计输出数 ↓）
-  | "totalTokens" // 总token（累计输入+输出）
+  | "totalTokens" // 总token（新增输入+缓存读+缓存写+输出）
   | "cacheHit"    // 缓存命中率
   | "speed"       // 速度（tok/s）
   | "context"     // 容量（ctx%）
@@ -195,6 +199,8 @@ interface QuotaDisplayState {
   provider: string;
   /** 数据获取时间戳；用于调试与新陈度判断 */
   fetchedAt: number;
+  /** display 为整体文本（非 5h/W/M/⏱ 子项）时置 true，状态栏跳过子项过滤 */
+  rawDisplay?: boolean;
   /** 错误时携带具体原因（key 缺失 / API 错误 / 网络错误 / 无数据） */
   error?: QuotaError;
 }
@@ -686,6 +692,8 @@ const BUILTIN_PLANS: TokenPlan[] = [
         modelPrefix: "",
         display: "¥" + total.toFixed(1),
         color: total < 1 ? "warn" as const : "ok" as const,
+        // 余额金额：无 5h/W/M 子项，状态栏整体显示
+        rawDisplay: true,
       };
     },
   },
@@ -1118,7 +1126,9 @@ export function createTokenStats(
       if (cfg.input) segParts.push(`↑${formatTokens(stats.totalInput)}`);
       if (cfg.output) segParts.push(`↓${formatTokens(stats.totalOutput)}`);
       if (cfg.totalTokens) {
-        const total = stats.totalInput + stats.totalOutput;
+        // 总token：真实全量消耗（新增输入 + 缓存读 + 缓存写 + 输出）
+        const total =
+          stats.totalInput + stats.totalCacheRead + stats.totalCacheWrite + stats.totalOutput;
         segParts.push(`Σ${formatTokens(total)}`);
       }
       if (cfg.cacheHit) {
@@ -1222,6 +1232,10 @@ export function createTokenStats(
 
       // error 状态（如 no_plan / key_missing）也显示具体原因，不再静默消失
       if (quotaState.error) {
+        parts.push(qColor(prefix + quotaState.display));
+      } else if (quotaState.rawDisplay) {
+        // 兜底：整体文本类套餐（如 DeepSeek 余额 ¥12.3）不含 5h/W/M/⏱ 子项，
+        // 子项过滤会得到空串，这里整体原样显示。
         parts.push(qColor(prefix + quotaState.display));
       } else {
         // 正常状态：按子项过滤配额显示
@@ -1688,6 +1702,7 @@ export function createTokenStats(
         display: fmt.display,
         modelPrefix: fmt.modelPrefix,
         color: fmt.color,
+        rawDisplay: fmt.rawDisplay,
         fetchedAt: cached.fetchedAt,
       };
       shared.requestRender?.();
@@ -1709,6 +1724,7 @@ export function createTokenStats(
         quotaState = buildErrorState(curProvider, plan.id, { kind: "no_data" });
         quotaState.display = fmt.display;
         quotaState.modelPrefix = fmt.modelPrefix;
+        quotaState.rawDisplay = fmt.rawDisplay;
         return;
       }
       quotaState = {
@@ -1717,6 +1733,7 @@ export function createTokenStats(
         display: fmt.display,
         modelPrefix: fmt.modelPrefix,
         color: fmt.color,
+        rawDisplay: fmt.rawDisplay,
         fetchedAt: Date.now(),
       };
     } catch (e: any) {
