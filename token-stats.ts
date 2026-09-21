@@ -1041,6 +1041,8 @@ export function createTokenStats(
   let quotaTimerId: ReturnType<typeof setInterval> | null = null;
   let tokenConfig: TokenConfig | null = null;
   let lastQuotaProvider: string | null = null;
+  /** 配额查询代际：每次 refreshQuota 自增，只有最新一次查询的结果才允许写入 quotaState */
+  let quotaFetchSeq = 0;
 
   // ── run 级 token 累加（agent_start 重置，agent_settled 时供 step-timer 读取）──
 
@@ -1212,8 +1214,11 @@ export function createTokenStats(
     // ── 套餐用量（最右侧）：检测 provider 变化，自动隐藏/刷新 ─
     const curProvider = ctx.model?.provider ?? null;
     if (curProvider !== lastQuotaProvider) {
-      // 跨 provider 切换：force refresh（绕过缓存）
-      if (lastQuotaProvider !== null || curProvider !== null) {
+      lastQuotaProvider = curProvider;
+      if (curProvider !== null) {
+        // 跨 provider 切换：旧供应商的配额立即隐藏，避免新模型下方仍显示上一个模型的额度；
+        // 再 force refresh（绕过缓存）拉取当前供应商的配额
+        quotaState = null;
         setTimeout(() => {
           if (!shared.sessionActive) return;
           refreshQuota(ctx, true)
@@ -1221,9 +1226,9 @@ export function createTokenStats(
             .catch(() => { /* ctx 已失效（session 被替换），忽略 */ });
         }, 0);
       }
-      lastQuotaProvider = curProvider;
     }
-    if (quotaState && quotaState.display) {
+    // 兜底：只有 provider 与当前模型一致的配额数据才渲染（防止慢响应/残留数据错配）
+    if (quotaState && quotaState.display && quotaState.provider === curProvider) {
       const qColor = quotaState.color === "ok" ? ok
         : quotaState.color === "warn" ? warn
           : quotaState.color === "err" ? (s: string) => theme.fg("error", s)
@@ -1665,11 +1670,18 @@ export function createTokenStats(
    * force=true 时绕过缓存（用于 provider 切换 / 手动刷新 / session_start）。
    */
   async function refreshQuota(ctx: ExtensionContext, force = false): Promise<void> {
+    // 本轮查询代际：接口响应慢时，返回时用户可能已切到其他模型或又发起了新的查询，
+    // 此时结果作废，不能再用旧供应商的数据刷新下方 quota 显示
+    const seq = ++quotaFetchSeq;
+
     // 1. 先检测 provider 变化（可能清空 quotaState）
     detectAndHandleProviderChange(ctx);
 
     const curProvider = ctx.model?.provider;
     if (!curProvider) return; // provider 缺失：不显示
+
+    /** 本轮结果是否仍对得上当前模型：代际最新（无更新的查询）且 provider 未变 */
+    const isCurrent = () => seq === quotaFetchSeq && ctx.model?.provider === curProvider;
 
     // 2. 解析 plan
     const plan = resolveActivePlan(curProvider);
@@ -1692,6 +1704,7 @@ export function createTokenStats(
 
     // 4. 读缓存（force 时跳过）
     const cache = await readQuotaCache();
+    if (!isCurrent()) return; // 读缓存期间已切模型/发起新查询：丢弃
     const cached = cache[plan.id];
     const ttlMs = (tokenConfig?.ttl || 60) * 1000;
     if (!force && cached && (Date.now() - cached.fetchedAt) < cached.ttl) {
@@ -1716,8 +1729,10 @@ export function createTokenStats(
         key,
         { team: resolveTeamCredential(plan) },
       );
+      // 缓存照写（供切回该 provider 时复用），但只在结果仍对得上当前模型时才更新显示
       cache[plan.id] = { fetchedAt: Date.now(), ttl: ttlMs, data };
       await writeQuotaCache(cache);
+      if (!isCurrent()) return; // 响应返回时已切到其他模型：不刷新显示
       const fmt = plan.format(data);
       // format 可能返回 "无数据" 颜色为 err
       if (fmt.color === "err" && fmt.display === "无数据") {
@@ -1737,6 +1752,7 @@ export function createTokenStats(
         fetchedAt: Date.now(),
       };
     } catch (e: any) {
+      if (!isCurrent()) return; // 过期请求的错误同样丢弃，避免污染当前模型的显示
       // 区分网络错误与 API 业务错误
       const msg = e?.message || String(e);
       const isNetwork = /timeout|abort|fetch failed|network|econnreset|enotfound/i.test(msg);
